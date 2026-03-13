@@ -10,7 +10,7 @@
 
 ## 🚀 Instalação e Uso
 
-### 🪟 No Windows — Modo Fácil (recomendado)
+### 🪟 Para Windows — Modo Fácil (recomendado)
 
 **Opção A — Baixar pacote pronto (sem precisar instalar nada além do Python):**
 
