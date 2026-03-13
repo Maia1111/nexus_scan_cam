@@ -1,25 +1,108 @@
-<!-- Cards de resumo -->
+<!-- ── Resumo ──────────────────────────────────────────────────── -->
 <div class="row g-3 mb-4">
   <div class="col-4">
     <div class="card text-center p-3">
       <div class="fw-bold" style="font-size:2rem; color:#60cdff;">{{ cameras_total }}</div>
-      <div class="text-secondary small">Câmeras cadastradas</div>
+      <div class="text-secondary small">Cadastradas</div>
     </div>
   </div>
   <div class="col-4">
     <div class="card text-center p-3">
       <div class="fw-bold" style="font-size:2rem; color:#22c55e;">{{ online_count }}</div>
-      <div class="text-secondary small"><i class="bi bi-circle-fill text-success"></i> Online</div>
+      <div class="text-secondary small"><i class="bi bi-circle-fill text-success" style="font-size:.6rem;"></i> Online</div>
     </div>
   </div>
   <div class="col-4">
     <div class="card text-center p-3">
       <div class="fw-bold" style="font-size:2rem; color:{{ '#ef4444' if offline_count > 0 else '#22c55e' }};">{{ offline_count }}</div>
-      <div class="text-secondary small"><i class="bi bi-circle text-danger"></i> Offline</div>
+      <div class="text-secondary small"><i class="bi bi-circle text-danger" style="font-size:.6rem;"></i> Offline</div>
     </div>
   </div>
 </div>
 
+<!-- ── Tabela de métricas de rede ─────────────────────────────── -->
+{% if network_stats %}
+<div class="card mb-4">
+  <div class="card-body p-0">
+    <div class="px-3 pt-3 pb-2 d-flex align-items-center gap-2">
+      <i class="bi bi-reception-4 text-primary"></i>
+      <strong>Métricas de rede (TCP ping ×4)</strong>
+      <small class="text-secondary ms-auto">Latência esperada em LAN: &lt;20ms</small>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0" style="font-size:.875rem;">
+        <thead>
+          <tr>
+            <th>Câmera</th>
+            <th>IP</th>
+            <th>Latência méd.</th>
+            <th>Jitter</th>
+            <th>Perda</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in network_stats %}
+          {% set cam = s.cam %}
+          <tr>
+            <td>{{ cam.name or '—' }}</td>
+            <td><code>{{ cam.ip_address }}</code></td>
+            <td>
+              {% if s.avg_ms is not none %}
+                {% if s.avg_ms > 300 %}
+                  <span class="text-danger fw-bold">{{ "%.0f"|format(s.avg_ms) }}ms</span>
+                {% elif s.avg_ms > 80 %}
+                  <span class="text-warning">{{ "%.0f"|format(s.avg_ms) }}ms</span>
+                {% else %}
+                  <span class="text-success">{{ "%.0f"|format(s.avg_ms) }}ms</span>
+                {% endif %}
+              {% else %}
+                <span class="text-secondary">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.jitter_ms is not none and s.jitter_ms > 0 %}
+                {% if s.jitter_ms > 100 %}
+                  <span class="text-danger">{{ "%.0f"|format(s.jitter_ms) }}ms</span>
+                {% elif s.jitter_ms > 40 %}
+                  <span class="text-warning">{{ "%.0f"|format(s.jitter_ms) }}ms</span>
+                {% else %}
+                  <span class="text-secondary">{{ "%.0f"|format(s.jitter_ms) }}ms</span>
+                {% endif %}
+              {% else %}
+                <span class="text-secondary">0ms</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.loss_pct > 0 %}
+                <span class="{{ 'text-danger' if s.loss_pct >= 50 else 'text-warning' }}">
+                  {{ "%.0f"|format(s.loss_pct) }}%
+                </span>
+              {% else %}
+                <span class="text-success">0%</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if not s.reachable %}
+                <span class="badge bg-danger">Sem resposta</span>
+              {% elif s.avg_ms > 300 or s.jitter_ms > 100 or s.loss_pct >= 50 %}
+                <span class="badge bg-danger">Crítico</span>
+              {% elif s.avg_ms > 80 or s.jitter_ms > 40 or s.loss_pct > 0 %}
+                <span class="badge bg-warning text-dark">Atenção</span>
+              {% else %}
+                <span class="badge bg-success">Normal</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Problemas encontrados ──────────────────────────────────── -->
 {% set danger_issues  = issues | selectattr("severity", "equalto", "danger")  | list %}
 {% set warning_issues = issues | selectattr("severity", "equalto", "warning") | list %}
 {% set info_issues    = issues | selectattr("severity", "equalto", "info")    | list %}
@@ -27,8 +110,8 @@
 {% if not issues %}
 <div class="card text-center py-5">
   <div style="font-size:3.5rem; color:#22c55e;"><i class="bi bi-patch-check-fill"></i></div>
-  <h5 class="mt-3">Tudo funcionando!</h5>
-  <p class="text-secondary mb-0">Nenhum problema encontrado nas câmeras cadastradas.</p>
+  <h5 class="mt-3">Tudo funcionando normalmente!</h5>
+  <p class="text-secondary mb-0">Nenhum problema de rede, configuração ou conflito encontrado.</p>
 </div>
 
 {% else %}
@@ -36,16 +119,16 @@
 {% if danger_issues %}
 <div class="mb-3">
   <div class="d-flex align-items-center gap-2 mb-2">
-    <i class="bi bi-x-circle-fill text-danger fs-5"></i>
-    <span class="fw-semibold text-danger">Requer atenção imediata — {{ danger_issues | length }}</span>
+    <i class="bi bi-x-circle-fill text-danger"></i>
+    <span class="fw-semibold text-danger">Crítico — {{ danger_issues | length }} problema(s)</span>
   </div>
   {% for issue in danger_issues %}
-  <div class="card mb-2 border-danger" style="border-left: 3px solid #ef4444 !important;">
+  <div class="card mb-2" style="border-left:3px solid #ef4444 !important;">
     <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
-      <i class="bi bi-{{ issue.icon }} text-danger fs-5 mt-1 flex-shrink-0"></i>
+      <i class="bi bi-{{ issue.icon }} text-danger mt-1 flex-shrink-0" style="font-size:1.1rem;"></i>
       <div class="flex-grow-1">
-        <div class="fw-semibold">{{ issue.title }}</div>
-        <div class="text-secondary small">{{ issue.detail }}</div>
+        <div class="fw-semibold small">{{ issue.title }}</div>
+        <div class="text-secondary" style="font-size:.82rem;">{{ issue.detail }}</div>
       </div>
       {% if issue.camera %}
       <a href="/cameras" class="btn btn-sm btn-outline-danger flex-shrink-0">
@@ -61,16 +144,16 @@
 {% if warning_issues %}
 <div class="mb-3">
   <div class="d-flex align-items-center gap-2 mb-2">
-    <i class="bi bi-dot text-warning fs-5"></i>
-    <span class="fw-semibold" style="color:#fbbf24;">Verificar — {{ warning_issues | length }}</span>
+    <i class="bi bi-dot" style="color:#fbbf24; font-size:1.5rem;"></i>
+    <span class="fw-semibold" style="color:#fbbf24;">Atenção — {{ warning_issues | length }} item(s)</span>
   </div>
   {% for issue in warning_issues %}
-  <div class="card mb-2" style="border-left: 3px solid #fbbf24 !important;">
+  <div class="card mb-2" style="border-left:3px solid #fbbf24 !important;">
     <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
-      <i class="bi bi-{{ issue.icon }}" style="color:#fbbf24; font-size:1.1rem;" class="mt-1 flex-shrink-0"></i>
+      <i class="bi bi-{{ issue.icon }} mt-1 flex-shrink-0" style="color:#fbbf24; font-size:1.1rem;"></i>
       <div class="flex-grow-1">
-        <div class="fw-semibold">{{ issue.title }}</div>
-        <div class="text-secondary small">{{ issue.detail }}</div>
+        <div class="fw-semibold small">{{ issue.title }}</div>
+        <div class="text-secondary" style="font-size:.82rem;">{{ issue.detail }}</div>
       </div>
       {% if issue.camera %}
       <a href="/cameras" class="btn btn-sm btn-outline-warning flex-shrink-0">
@@ -86,16 +169,16 @@
 {% if info_issues %}
 <div class="mb-3">
   <div class="d-flex align-items-center gap-2 mb-2">
-    <i class="bi bi-info-circle-fill text-info fs-5"></i>
-    <span class="fw-semibold text-info">Informativo — {{ info_issues | length }}</span>
+    <i class="bi bi-info-circle-fill text-info"></i>
+    <span class="fw-semibold text-info">Informativo — {{ info_issues | length }} item(s)</span>
   </div>
   {% for issue in info_issues %}
-  <div class="card mb-2" style="border-left: 3px solid #38bdf8 !important;">
+  <div class="card mb-2" style="border-left:3px solid #38bdf8 !important;">
     <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
-      <i class="bi bi-{{ issue.icon }} text-info fs-5 mt-1 flex-shrink-0"></i>
+      <i class="bi bi-{{ issue.icon }} text-info mt-1 flex-shrink-0" style="font-size:1.1rem;"></i>
       <div class="flex-grow-1">
-        <div class="fw-semibold">{{ issue.title }}</div>
-        <div class="text-secondary small">{{ issue.detail }}</div>
+        <div class="fw-semibold small">{{ issue.title }}</div>
+        <div class="text-secondary" style="font-size:.82rem;">{{ issue.detail }}</div>
       </div>
       {% if issue.camera %}
       <a href="/cameras" class="btn btn-sm btn-outline-info flex-shrink-0">
@@ -111,5 +194,5 @@
 {% endif %}
 
 <div class="text-secondary small mt-2">
-  <i class="bi bi-clock"></i> Verificado agora
+  <i class="bi bi-clock"></i> Verificado agora · TCP ping ×4 por câmera
 </div>
