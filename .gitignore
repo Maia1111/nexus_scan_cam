@@ -1,5 +1,7 @@
 .venv/
 __pycache__/
+.claude/
+*.zip
 *.pyc
 *.pyo
 *.db
