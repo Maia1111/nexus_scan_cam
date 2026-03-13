@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-bs-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,52 +8,216 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <style>
-    body          { background: #0f172a; color: #e2e8f0; min-height: 100vh; }
-    .navbar       { background: #1e293b !important; border-bottom: 1px solid #334155; }
-    .card         { background: #1e293b; border-color: #334155; }
-    .table        { color: #e2e8f0; }
-    .table thead  { background: #0f172a; }
-    .table-hover tbody tr:hover { background: #263548; }
-    .form-control, .form-select { background: #0f172a; color: #e2e8f0; border-color: #475569; }
-    .form-control:focus, .form-select:focus { background: #0f172a; color: #e2e8f0; border-color: #3b82f6; box-shadow: 0 0 0 .2rem rgba(59,130,246,.25); }
-    .modal-content { background: #1e293b; color: #e2e8f0; border-color: #334155; }
-    .modal-header { border-color: #334155; }
-    .modal-footer { border-color: #334155; }
-    .nav-link-active { background: #334155 !important; border-radius: 6px; }
-    code { color: #38bdf8; }
+    :root {
+      --sidebar-w: 230px;
+      --bg-deep:   #0b1120;
+      --bg-card:   #1a2540;
+      --bg-hover:  #243050;
+      --border:    #2d3f5e;
+      --txt:       #dde6f5;
+      --txt-muted: #7a90b8;
+      --accent:    #3b82f6;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body { height: 100%; margin: 0; }
+
+    body {
+      display: flex;
+      background: var(--bg-deep);
+      color: var(--txt);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    /* ── Sidebar ───────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      height: 100vh;
+      position: sticky;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+      overflow-y: auto;
+      z-index: 100;
+    }
+
+    .sb-brand {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      padding: 1.25rem 1rem 1rem;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--txt);
+      border-bottom: 1px solid var(--border);
+      letter-spacing: .01em;
+    }
+    .sb-brand i { font-size: 1.4rem; color: var(--accent); }
+
+    .sb-section {
+      padding: .6rem .5rem .2rem;
+      font-size: .68rem;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--txt-muted);
+      padding-left: 1rem;
+    }
+
+    .sb-item {
+      display: flex;
+      align-items: center;
+      gap: .7rem;
+      padding: .55rem .9rem;
+      margin: 2px .5rem;
+      border-radius: 8px;
+      color: var(--txt-muted);
+      text-decoration: none;
+      font-size: .92rem;
+      transition: background .15s, color .15s;
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      width: calc(100% - 1rem);
+      text-align: left;
+    }
+    .sb-item i { font-size: 1.05rem; flex-shrink: 0; width: 20px; text-align: center; }
+    .sb-item:hover  { background: var(--bg-hover); color: var(--txt); }
+    .sb-item.active { background: var(--accent);   color: #fff; }
+    .sb-item.active i { color: #fff; }
+
+    .sb-item .badge {
+      margin-left: auto;
+      font-size: .65rem;
+    }
+
+    .sb-divider { border-top: 1px solid var(--border); margin: .5rem; }
+
+    .sb-footer {
+      margin-top: auto;
+      border-top: 1px solid var(--border);
+      padding: .75rem;
+    }
+    .sb-user {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .4rem .5rem;
+      border-radius: 8px;
+      margin-bottom: .3rem;
+      background: rgba(255,255,255,.04);
+    }
+    .sb-user i { color: var(--txt-muted); font-size: 1.1rem; }
+    .sb-user .name { font-size: .88rem; font-weight: 500; }
+    .sb-user .role { font-size: .68rem; color: var(--txt-muted); }
+
+    /* ── Main content ──────────────────────────────── */
+    #main-content {
+      flex: 1;
+      min-height: 100vh;
+      overflow-y: auto;
+      padding: 1.75rem;
+      background: var(--bg-deep);
+    }
+
+    /* ── Cards ─────────────────────────────────────── */
+    .card {
+      background: var(--bg-card) !important;
+      border-color: var(--border) !important;
+    }
+
+    /* ── Tables ─────────────────────────────────────── */
+    .table { color: var(--txt); }
+    .table thead th { background: var(--bg-deep); border-color: var(--border); color: var(--txt-muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+    .table tbody tr td { border-color: var(--border); }
+    .table-hover tbody tr:hover td { background: var(--bg-hover); }
+    .table-dark { --bs-table-bg: var(--bg-card); --bs-table-hover-bg: var(--bg-hover); }
+
+    /* ── Forms ──────────────────────────────────────── */
+    .form-label { color: #b0c4de !important; font-size: .85rem; margin-bottom: .3rem; }
+    .form-control, .form-select {
+      background: var(--bg-deep) !important;
+      color: var(--txt) !important;
+      border-color: var(--border) !important;
+    }
+    .form-control:focus, .form-select:focus {
+      border-color: var(--accent) !important;
+      box-shadow: 0 0 0 .2rem rgba(59,130,246,.2) !important;
+    }
+    .form-control::placeholder { color: var(--txt-muted); }
+
+    /* ── Modals ─────────────────────────────────────── */
+    .modal-content  { background: var(--bg-card) !important; border-color: var(--border); }
+    .modal-header, .modal-footer { border-color: var(--border); }
+    .modal-title { color: var(--txt); }
+    .btn-close-white { filter: invert(1) grayscale(1) brightness(2); }
+
+    /* ── Misc ───────────────────────────────────────── */
+    code { color: #60cdff; }
+    .page-title { font-size: 1.15rem; font-weight: 600; color: var(--txt); margin-bottom: 1.25rem; display: flex; align-items: center; gap: .5rem; }
+    .page-title i { color: var(--accent); }
+
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: inline-block; }
+    .htmx-request.htmx-indicator { display: inline-block; }
   </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark px-3">
-  <a class="navbar-brand fw-bold" href="/cameras">
-    <i class="bi bi-camera-video-fill text-primary"></i> Scanner IP
-  </a>
-  <div class="ms-auto d-flex align-items-center gap-2">
-    <a href="/cameras" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/cameras' else 'btn-outline-secondary' }}">
-      <i class="bi bi-camera-video"></i> Câmeras
+
+<!-- ── Sidebar ────────────────────────────────────────────────── -->
+<nav id="sidebar">
+  <div class="sb-brand">
+    <i class="bi bi-shield-check"></i>
+    <span>Scanner IP</span>
+  </div>
+
+  <div class="mt-2">
+    <div class="sb-section">Monitoramento</div>
+    <a href="/cameras" class="sb-item {{ 'active' if request.url.path == '/cameras' }}">
+      <i class="bi bi-camera-video"></i>
+      <span>Câmeras</span>
     </a>
-    <a href="/scanner" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/scanner' else 'btn-outline-secondary' }}">
-      <i class="bi bi-radar"></i> Scanner
+    <a href="/scanner" class="sb-item {{ 'active' if request.url.path == '/scanner' }}">
+      <i class="bi bi-radar"></i>
+      <span>Scanner</span>
     </a>
-    <a href="/groups" class="btn btn-sm {{ 'btn-primary' if request.url.path == '/groups' else 'btn-outline-secondary' }}">
-      <i class="bi bi-collection"></i> Grupos
+
+    <div class="sb-section mt-2">Organização</div>
+    <a href="/groups" class="sb-item {{ 'active' if request.url.path == '/groups' }}">
+      <i class="bi bi-collection"></i>
+      <span>Grupos</span>
     </a>
-    <a href="/diagnostics" class="btn btn-sm {{ 'btn-warning' if request.url.path == '/diagnostics' else 'btn-outline-warning' }}">
-      <i class="bi bi-exclamation-triangle"></i> Diagnóstico
+
+    <div class="sb-section mt-2">Análise</div>
+    <a href="/diagnostics" class="sb-item {{ 'active' if request.url.path == '/diagnostics' }}">
+      <i class="bi bi-activity"></i>
+      <span>Saúde da Rede</span>
     </a>
-    <span class="text-secondary small ms-2">
-      <i class="bi bi-person-circle"></i> {{ user.username }}
-      <span class="badge bg-secondary ms-1">{{ user.role }}</span>
-    </span>
-    <a href="/logout" class="btn btn-sm btn-outline-danger ms-2">
-      <i class="bi bi-box-arrow-right"></i> Sair
+  </div>
+
+  <div class="sb-footer">
+    <div class="sb-user">
+      <i class="bi bi-person-circle"></i>
+      <div>
+        <div class="name">{{ user.username }}</div>
+        <div class="role">{{ user.role }}</div>
+      </div>
+    </div>
+    <a href="/logout" class="sb-item" style="color:#f87171;">
+      <i class="bi bi-box-arrow-right" style="color:#f87171;"></i>
+      <span>Sair</span>
     </a>
   </div>
 </nav>
 
-<div class="container-fluid p-4">
+<!-- ── Main ───────────────────────────────────────────────────── -->
+<main id="main-content">
   {% block content %}{% endblock %}
-</div>
+</main>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 {% block scripts %}{% endblock %}

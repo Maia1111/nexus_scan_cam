@@ -1,94 +1,115 @@
-<!-- Resumo -->
+<!-- Cards de resumo -->
 <div class="row g-3 mb-4">
-  <div class="col-md-4">
+  <div class="col-4">
     <div class="card text-center p-3">
-      <div style="font-size:2rem;" class="text-info">{{ cameras_total }}</div>
+      <div class="fw-bold" style="font-size:2rem; color:#60cdff;">{{ cameras_total }}</div>
       <div class="text-secondary small">Câmeras cadastradas</div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-4">
     <div class="card text-center p-3">
-      <div style="font-size:2rem;" class="text-success">{{ online_count }}</div>
-      <div class="text-secondary small">Online agora</div>
+      <div class="fw-bold" style="font-size:2rem; color:#22c55e;">{{ online_count }}</div>
+      <div class="text-secondary small"><i class="bi bi-circle-fill text-success"></i> Online</div>
     </div>
   </div>
-  <div class="col-md-4">
+  <div class="col-4">
     <div class="card text-center p-3">
-      <div style="font-size:2rem;" class="{{ 'text-danger' if offline_count > 0 else 'text-success' }}">{{ offline_count }}</div>
-      <div class="text-secondary small">Offline</div>
+      <div class="fw-bold" style="font-size:2rem; color:{{ '#ef4444' if offline_count > 0 else '#22c55e' }};">{{ offline_count }}</div>
+      <div class="text-secondary small"><i class="bi bi-circle text-danger"></i> Offline</div>
     </div>
   </div>
 </div>
 
-<!-- Problemas -->
 {% set danger_issues  = issues | selectattr("severity", "equalto", "danger")  | list %}
 {% set warning_issues = issues | selectattr("severity", "equalto", "warning") | list %}
 {% set info_issues    = issues | selectattr("severity", "equalto", "info")    | list %}
 
 {% if not issues %}
 <div class="card text-center py-5">
-  <div class="text-success" style="font-size:3rem;"><i class="bi bi-check-circle-fill"></i></div>
-  <h5 class="mt-3">Nenhum problema encontrado!</h5>
-  <p class="text-secondary">Todas as câmeras estão funcionando corretamente.</p>
+  <div style="font-size:3.5rem; color:#22c55e;"><i class="bi bi-patch-check-fill"></i></div>
+  <h5 class="mt-3">Tudo funcionando!</h5>
+  <p class="text-secondary mb-0">Nenhum problema encontrado nas câmeras cadastradas.</p>
 </div>
 
 {% else %}
 
 {% if danger_issues %}
-<h6 class="text-danger mb-2"><i class="bi bi-x-circle-fill"></i> Crítico ({{ danger_issues | length }})</h6>
-{% for issue in danger_issues %}
-<div class="alert alert-danger d-flex align-items-start gap-3 py-2 mb-2">
-  <i class="bi bi-{{ issue.icon }} fs-5 mt-1 flex-shrink-0"></i>
-  <div>
-    <strong>{{ issue.title }}</strong><br>
-    <small>{{ issue.detail }}</small>
-    {% if issue.camera %}
-    <br><a href="/cameras" class="text-danger small">
-      <i class="bi bi-arrow-right-circle"></i> Ver câmera {{ issue.camera.ip_address }}
-    </a>
-    {% endif %}
+<div class="mb-3">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <i class="bi bi-x-circle-fill text-danger fs-5"></i>
+    <span class="fw-semibold text-danger">Requer atenção imediata — {{ danger_issues | length }}</span>
   </div>
+  {% for issue in danger_issues %}
+  <div class="card mb-2 border-danger" style="border-left: 3px solid #ef4444 !important;">
+    <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
+      <i class="bi bi-{{ issue.icon }} text-danger fs-5 mt-1 flex-shrink-0"></i>
+      <div class="flex-grow-1">
+        <div class="fw-semibold">{{ issue.title }}</div>
+        <div class="text-secondary small">{{ issue.detail }}</div>
+      </div>
+      {% if issue.camera %}
+      <a href="/cameras" class="btn btn-sm btn-outline-danger flex-shrink-0">
+        <i class="bi bi-arrow-right"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
 </div>
-{% endfor %}
 {% endif %}
 
 {% if warning_issues %}
-<h6 class="text-warning mb-2 mt-3"><i class="bi bi-exclamation-triangle-fill"></i> Atenção ({{ warning_issues | length }})</h6>
-{% for issue in warning_issues %}
-<div class="alert alert-warning d-flex align-items-start gap-3 py-2 mb-2">
-  <i class="bi bi-{{ issue.icon }} fs-5 mt-1 flex-shrink-0"></i>
-  <div>
-    <strong>{{ issue.title }}</strong><br>
-    <small>{{ issue.detail }}</small>
-    {% if issue.camera %}
-    <br><a href="/cameras" class="text-warning small">
-      <i class="bi bi-arrow-right-circle"></i> Ver câmera {{ issue.camera.ip_address }}
-    </a>
-    {% endif %}
+<div class="mb-3">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <i class="bi bi-dot text-warning fs-5"></i>
+    <span class="fw-semibold" style="color:#fbbf24;">Verificar — {{ warning_issues | length }}</span>
   </div>
+  {% for issue in warning_issues %}
+  <div class="card mb-2" style="border-left: 3px solid #fbbf24 !important;">
+    <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
+      <i class="bi bi-{{ issue.icon }}" style="color:#fbbf24; font-size:1.1rem;" class="mt-1 flex-shrink-0"></i>
+      <div class="flex-grow-1">
+        <div class="fw-semibold">{{ issue.title }}</div>
+        <div class="text-secondary small">{{ issue.detail }}</div>
+      </div>
+      {% if issue.camera %}
+      <a href="/cameras" class="btn btn-sm btn-outline-warning flex-shrink-0">
+        <i class="bi bi-arrow-right"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
 </div>
-{% endfor %}
 {% endif %}
 
 {% if info_issues %}
-<h6 class="text-info mb-2 mt-3"><i class="bi bi-info-circle-fill"></i> Informativo ({{ info_issues | length }})</h6>
-{% for issue in info_issues %}
-<div class="alert alert-secondary d-flex align-items-start gap-3 py-2 mb-2">
-  <i class="bi bi-{{ issue.icon }} fs-5 mt-1 flex-shrink-0 text-info"></i>
-  <div>
-    <strong>{{ issue.title }}</strong><br>
-    <small>{{ issue.detail }}</small>
-    {% if issue.camera %}
-    <br><a href="/cameras" class="text-secondary small">
-      <i class="bi bi-arrow-right-circle"></i> Ver câmera {{ issue.camera.ip_address }}
-    </a>
-    {% endif %}
+<div class="mb-3">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <i class="bi bi-info-circle-fill text-info fs-5"></i>
+    <span class="fw-semibold text-info">Informativo — {{ info_issues | length }}</span>
   </div>
+  {% for issue in info_issues %}
+  <div class="card mb-2" style="border-left: 3px solid #38bdf8 !important;">
+    <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
+      <i class="bi bi-{{ issue.icon }} text-info fs-5 mt-1 flex-shrink-0"></i>
+      <div class="flex-grow-1">
+        <div class="fw-semibold">{{ issue.title }}</div>
+        <div class="text-secondary small">{{ issue.detail }}</div>
+      </div>
+      {% if issue.camera %}
+      <a href="/cameras" class="btn btn-sm btn-outline-info flex-shrink-0">
+        <i class="bi bi-arrow-right"></i>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
 </div>
-{% endfor %}
 {% endif %}
 
-<div class="text-secondary small mt-3">
-  <i class="bi bi-clock"></i> Diagnóstico executado agora
-</div>
 {% endif %}
+
+<div class="text-secondary small mt-2">
+  <i class="bi bi-clock"></i> Verificado agora
+</div>
