@@ -789,6 +789,124 @@ async def diagnostics_report_pdf(request: Request):
     )
 
 
+async def _collect_grouped_diagnostics() -> dict:
+    """Coleta diagnósticos e agrupa por CameraGroup."""
+    data = await _collect_diagnostics()
+    
+    # Organiza os resultados por grupo
+    # Estrutura: { group_id: { group: GroupObj, cameras: [], issues: [], stats: [], total: 0, online: 0, offline: 0 } }
+    grouped = {}
+    
+    # Garante que todos os grupos existentes estejam no dicionário
+    for group in CameraGroup.select():
+        grouped[group.id] = {
+            "group": group,
+            "cameras": [],
+            "issues": [],
+            "stats": [],
+            "online": 0,
+            "offline": 0
+        }
+    
+    # Caso especial para câmeras sem grupo (None)
+    no_group_key = 0
+    grouped[no_group_key] = {
+        "group": {"id": 0, "name": "Sem Grupo Escalar"},
+        "cameras": [],
+        "issues": [],
+        "stats": [],
+        "online": 0,
+        "offline": 0
+    }
+
+    # Distribui as câmeras
+    for cam in data["cameras"]:
+        gid = cam.group_id if cam.group_id else no_group_key
+        if gid not in grouped: # Caso o grupo tenha sido deletado mas a câmera ainda aponte pra ele
+            continue
+        grouped[gid]["cameras"].append(cam)
+        if cam.is_online:
+            grouped[gid]["online"] += 1
+        else:
+            grouped[gid]["offline"] += 1
+
+    # Distribui os issues
+    for issue in data["issues"]:
+        cam = issue.get("camera")
+        if cam:
+            gid = cam.group_id if cam.group_id else no_group_key
+            if gid in grouped:
+                grouped[gid]["issues"].append(issue)
+
+    # Distribui as métricas de rede (stats)
+    for stat in data["network_stats"]:
+        cam = stat.get("cam")
+        if cam:
+            gid = cam.group_id if cam.group_id else no_group_key
+            if gid in grouped:
+                grouped[gid]["stats"].append(stat)
+
+    # Remove grupos vazios (opcional, mas melhor para o relatório)
+    final_groups = []
+    for gid in sorted(grouped.keys()):
+        g_data = grouped[gid]
+        if g_data["cameras"]:
+            g_data["total"] = len(g_data["cameras"])
+            final_groups.append(g_data)
+            
+    return {
+        "groups": final_groups,
+        "total_cameras": data["cameras_total"],
+        "total_online": data["online_count"],
+        "total_offline": data["offline_count"],
+        "total_issues": len(data["issues"])
+    }
+
+
+@app.get("/diagnostics/groups/report", response_class=HTMLResponse)
+async def diagnostics_grouped_report(request: Request):
+    user = get_user(request)
+    if not user:
+        return RedirectResponse("/login")
+    data = await _collect_grouped_diagnostics()
+    return templates.TemplateResponse("report_grouped.html", {
+        "request": request,
+        "generated_at": datetime.now().strftime("%d/%m/%Y às %H:%M"),
+        "generated_by": user.username,
+        "for_print": False,
+        **data,
+    })
+
+
+@app.get("/diagnostics/groups/report/pdf")
+async def diagnostics_grouped_report_pdf(request: Request):
+    user = get_user(request)
+    if not user:
+        return RedirectResponse("/login")
+
+    data = await _collect_grouped_diagnostics()
+    html_content = templates.get_template("report_grouped.html").render({
+        "request": request,
+        "generated_at": datetime.now().strftime("%d/%m/%Y às %H:%M"),
+        "generated_by": user.username,
+        "for_print": True,
+        **data,
+    })
+
+    loop = asyncio.get_running_loop()
+    pdf_bytes = await loop.run_in_executor(
+        None,
+        lambda: WeasyHTML(string=html_content).write_pdf()
+    )
+
+    filename = f"relatorio_agrupado_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # ── Camera snapshot viewer ─────────────────────────────────────────────────────
 _SNAPSHOT_URLS = [
     "http://{ip}/snapshot.jpg",

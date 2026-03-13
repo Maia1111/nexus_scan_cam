@@ -16,16 +16,32 @@
           <div class="fw-semibold">Verificar câmeras</div>
           <small class="text-secondary">Analisa conflitos, status e problemas de configuração</small>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex flex-wrap gap-2">
           <button id="verify-btn" class="btn btn-primary" onclick="runDiagnostics()">
-            <i class="bi bi-play-fill me-1"></i> Verificar
+            <i class="bi bi-play-fill me-1"></i> Verificar Tudo
           </button>
-          <a href="/diagnostics/report/pdf" class="btn btn-success">
-            <i class="bi bi-file-earmark-pdf me-1"></i> Baixar PDF
-          </a>
-          <a href="/diagnostics/report" target="_blank" class="btn btn-outline-secondary">
-            <i class="bi bi-printer me-1"></i> Visualizar
-          </a>
+          
+          <div class="vr mx-2"></div>
+          
+          <div class="btn-group">
+             <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown">
+               <i class="bi bi-file-earmark-pdf"></i> Relatórios PDF
+             </button>
+             <ul class="dropdown-menu">
+               <li><a class="dropdown-item" href="/diagnostics/report/pdf"><i class="bi bi-list-check me-2"></i>Geral (Cronológico)</a></li>
+               <li><a class="dropdown-item" href="/diagnostics/groups/report/pdf"><i class="bi bi-collection me-2"></i>Por Grupos / Setores</a></li>
+             </ul>
+          </div>
+
+          <div class="btn-group">
+             <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+               <i class="bi bi-eye"></i> Visualizar
+             </button>
+             <ul class="dropdown-menu">
+               <li><a class="dropdown-item" href="/diagnostics/report" target="_blank">Relatório Geral</a></li>
+               <li><a class="dropdown-item" href="/diagnostics/groups/report" target="_blank">Relatório por Grupos</a></li>
+             </ul>
+          </div>
         </div>
       </div>
     </div>
