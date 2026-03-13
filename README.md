@@ -111,4 +111,4 @@ Antes de instalar, certifique-se de ter instalado em sua máquina:
 
 Este projeto é desenvolvido para fins profissionais de monitoramento. Verifique sempre as leis locais sobre privacidade e monitoramento de câmeras.
 
-**Desenvolvido por Rogério Maia & Antigravity AI** 🚀🎥
+**Desenvolvido por Rogério Maia** 🚀🎥
