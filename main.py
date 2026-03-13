@@ -878,6 +878,7 @@ async def _collect_grouped_diagnostics() -> dict:
             
     return {
         "groups": final_groups,
+        "total_groups": len(final_groups),
         "total_cameras": data["cameras_total"],
         "total_online": data["online_count"],
         "total_offline": data["offline_count"],

@@ -214,7 +214,7 @@
 <div class="print-bar">
   <table>
     <tr>
-      <td>📋 <strong>Relatório de Saúde da Rede</strong> — gerado em {{ generated_at }}</td>
+      <td><i class="bi bi-camera-video-fill"></i> <strong>Relatório de Saúde da Rede</strong> — gerado em {{ generated_at }}</td>
       <td class="actions">
         <a href="/diagnostics/report/pdf">⬇ Baixar PDF</a>
         <button onclick="window.print()">🖨 Imprimir</button>
@@ -231,8 +231,10 @@
   <table class="header-table">
     <tr>
       <td>
-        <span class="brand-icon">📷</span>
-        <span class="brand-name">Scanner IP</span>
+        <span class="brand-icon" style="background: #16a34a; color: #fff; padding: 5px; border-radius: 6px;">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3m-9 3c0-4.97 4.03-9 9-9s9 4.03 9 9-4.03 9-9 9-9-4.03-9-9m11 0c0-1.1-.9-2-2-2s-2 .9-2 2 .9 2 2 2 2-.9 2-2z"/></svg>
+        </span>
+        <span class="brand-name" style="color:#16a34a;">Nexus Scan</span>
         <div class="brand-sub" style="margin-left:48px;">{{ title or 'Relatório de Saúde da Rede — Câmeras IP' }}</div>
       </td>
       <td class="meta-col">
@@ -391,7 +393,7 @@
   {% endif %}
 
   <!-- ── Inventário completo ────────────────────────── -->
-  <div class="section-title">Inventário de Câmeras</div>
+  <div class="page-title mb-0"><i class="bi bi-camera-reels-fill"></i> Grupos de Câmeras</div>
   {% if cameras %}
   <table class="data">
     <thead>
