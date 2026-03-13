@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>Relatório de Saúde da Rede — Câmeras IP</title>
+  <title>{{ title or 'Relatório de Saúde da Rede' }}</title>
   <style>
     /* WeasyPrint-compatible CSS (sem flexbox, sem grid) */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -233,7 +233,7 @@
       <td>
         <span class="brand-icon">📷</span>
         <span class="brand-name">Scanner IP</span>
-        <div class="brand-sub" style="margin-left:48px;">Relatório de Saúde da Rede — Câmeras IP</div>
+        <div class="brand-sub" style="margin-left:48px;">{{ title or 'Relatório de Saúde da Rede — Câmeras IP' }}</div>
       </td>
       <td class="meta-col">
         <div class="meta-text">

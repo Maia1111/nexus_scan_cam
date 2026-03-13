@@ -18,7 +18,19 @@
       </span>
       {% endif %}
       <span class="badge bg-secondary">{{ cam_count }} câmera(s)</span>
+      <div class="vr mx-1"></div>
+      
+      <div class="btn-group">
+        <a href="/diagnostics/report?group_id={{ g.id }}" target="_blank" class="btn btn-sm btn-outline-secondary" title="Visualizar relatório do grupo">
+          <i class="bi bi-eye"></i>
+        </a>
+        <a href="/diagnostics/report/pdf?group_id={{ g.id }}" class="btn btn-sm btn-outline-success" title="Baixar PDF do grupo">
+          <i class="bi bi-file-earmark-pdf"></i>
+        </a>
+      </div>
+
       {% if is_admin %}
+      <div class="vr mx-1"></div>
       <button class="btn btn-sm btn-outline-primary"
               data-id="{{ g.id }}"
               data-name="{{ g.name | e }}"

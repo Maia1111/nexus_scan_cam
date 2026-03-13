@@ -567,10 +567,14 @@ async def _tcp_ping_multi(ip: str, port: int, count: int = 4, timeout: float = 1
     }
 
 
-async def _collect_diagnostics() -> dict:
+async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
     """Executa todas as verificações e retorna issues + network_stats."""
     issues: list[dict] = []
-    cameras = list(Camera.select())
+    
+    if group_id:
+        cameras = list(Camera.select().where(Camera.group_id == group_id))
+    else:
+        cameras = list(Camera.select())
 
     # Verificações estáticas
     for cam in cameras:
@@ -746,13 +750,21 @@ async def run_diagnostics(request: Request):
 
 
 @app.get("/diagnostics/report", response_class=HTMLResponse)
-async def diagnostics_report(request: Request):
+async def diagnostics_report(request: Request, group_id: Optional[int] = None):
     user = get_user(request)
     if not user:
         return RedirectResponse("/login")
-    data = await _collect_diagnostics()
+    data = await _collect_diagnostics(group_id=group_id)
+    
+    title = "Relatório de Saúde da Rede"
+    if group_id:
+        group = CameraGroup.get_or_none(CameraGroup.id == group_id)
+        if group:
+            title = f"Relatório — Grupo: {group.name}"
+
     return templates.TemplateResponse("report.html", {
         "request": request,
+        "title": title,
         "generated_at": datetime.now().strftime("%d/%m/%Y às %H:%M"),
         "generated_by": user.username,
         "for_print": False,
@@ -761,14 +773,24 @@ async def diagnostics_report(request: Request):
 
 
 @app.get("/diagnostics/report/pdf")
-async def diagnostics_report_pdf(request: Request):
+async def diagnostics_report_pdf(request: Request, group_id: Optional[int] = None):
     user = get_user(request)
     if not user:
         return RedirectResponse("/login")
 
-    data = await _collect_diagnostics()
+    data = await _collect_diagnostics(group_id=group_id)
+    
+    title = "Relatório de Saúde da Rede"
+    prefix = "relatorio_cameras"
+    if group_id:
+        group = CameraGroup.get_or_none(CameraGroup.id == group_id)
+        if group:
+            title = f"Relatório — Grupo: {group.name}"
+            prefix = f"relatorio_grupo_{group.name.replace(' ', '_').lower()}"
+
     html_content = templates.get_template("report.html").render({
         "request": request,
+        "title": title,
         "generated_at": datetime.now().strftime("%d/%m/%Y às %H:%M"),
         "generated_by": user.username,
         "for_print": True,
@@ -781,7 +803,7 @@ async def diagnostics_report_pdf(request: Request):
         lambda: WeasyHTML(string=html_content).write_pdf()
     )
 
-    filename = f"relatorio_cameras_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+    filename = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
