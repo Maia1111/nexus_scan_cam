@@ -16,9 +16,14 @@
           <div class="fw-semibold">Verificar câmeras</div>
           <small class="text-secondary">Analisa conflitos, status e problemas de configuração</small>
         </div>
-        <button id="verify-btn" class="btn btn-primary" onclick="runDiagnostics()">
-          <i class="bi bi-play-fill me-1"></i> Verificar
-        </button>
+        <div class="d-flex gap-2">
+          <button id="verify-btn" class="btn btn-primary" onclick="runDiagnostics()">
+            <i class="bi bi-play-fill me-1"></i> Verificar
+          </button>
+          <a href="/diagnostics/report" target="_blank" class="btn btn-outline-secondary">
+            <i class="bi bi-printer me-1"></i> Relatório
+          </a>
+        </div>
       </div>
     </div>
   </div>

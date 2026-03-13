@@ -524,6 +524,122 @@ async def _tcp_ping_multi(ip: str, port: int, count: int = 4, timeout: float = 1
     }
 
 
+async def _collect_diagnostics() -> dict:
+    """Executa todas as verificações e retorna issues + network_stats."""
+    issues: list[dict] = []
+    cameras = list(Camera.select())
+
+    # Verificações estáticas
+    for cam in cameras:
+        if not cam.is_online and cam.last_seen_at:
+            issues.append({
+                "severity": "warning", "icon": "wifi-off",
+                "type": "offline", "title": "Câmera offline",
+                "detail": f"{cam.name or cam.ip_address} ({cam.ip_address}) — última resposta em {cam.last_seen_at.strftime('%d/%m/%Y %H:%M')}",
+                "camera": cam,
+            })
+    for cam in cameras:
+        if cam.last_seen_at is None:
+            issues.append({
+                "severity": "info", "icon": "question-circle",
+                "type": "never_seen", "title": "Nunca respondeu",
+                "detail": f"{cam.name or cam.ip_address} ({cam.ip_address}) — cadastrada mas nunca foi vista online",
+                "camera": cam,
+            })
+    arp_map = NetworkScanner.parse_arp_table()
+    for cam in cameras:
+        if cam.mac_address and cam.ip_address in arp_map:
+            current = arp_map[cam.ip_address].upper()
+            saved = cam.mac_address.upper()
+            if current != saved:
+                issues.append({
+                    "severity": "danger", "icon": "shield-exclamation",
+                    "type": "ip_conflict", "title": "Conflito IP/MAC",
+                    "detail": f"IP {cam.ip_address} agora responde com MAC {current} (salvo: {saved}). Possível substituição ou invasão.",
+                    "camera": cam,
+                })
+    mac_map: dict[str, list] = {}
+    for cam in cameras:
+        if cam.mac_address:
+            mac_map.setdefault(cam.mac_address.upper(), []).append(cam)
+    for mac, cams in mac_map.items():
+        if len(cams) > 1:
+            issues.append({
+                "severity": "warning", "icon": "diagram-2",
+                "type": "duplicate_mac", "title": "MAC duplicado",
+                "detail": f"MAC {mac} em {len(cams)} IPs: {', '.join(c.ip_address for c in cams)}.",
+                "camera": cams[0],
+            })
+    for cam in cameras:
+        if not cam.username:
+            issues.append({
+                "severity": "info", "icon": "key",
+                "type": "no_credentials", "title": "Sem credenciais",
+                "detail": f"{cam.name or cam.ip_address} ({cam.ip_address}) — sem usuário/senha cadastrado",
+                "camera": cam,
+            })
+
+    # Verificações ativas (TCP ping)
+    network_stats: list[dict] = []
+    if cameras:
+        def _get_port(cam: Camera) -> int:
+            ports = [int(p) for p in (cam.open_ports_csv or "").split(",") if p.strip().isdigit()]
+            return ports[0] if ports else 554
+
+        ping_results = await asyncio.gather(
+            *[_tcp_ping_multi(cam.ip_address, _get_port(cam)) for cam in cameras]
+        )
+        for cam, p in zip(cameras, ping_results):
+            label = cam.name or cam.ip_address
+            if cam.is_online and not p["reachable"]:
+                issues.append({
+                    "severity": "danger", "icon": "slash-circle",
+                    "type": "frozen", "title": "Câmera não responde (possível travamento)",
+                    "detail": f"{label} ({cam.ip_address}) marcada como online mas não respondeu a nenhum dos 4 pings TCP.",
+                    "camera": cam,
+                })
+            elif p["reachable"]:
+                avg, jitter, loss = p["avg_ms"], p["jitter_ms"], p["loss_pct"]
+                if avg > 300:
+                    issues.append({"severity": "danger", "icon": "speedometer", "type": "high_latency",
+                        "title": "Latência crítica — possível loop de rede",
+                        "detail": f"{label}: latência média {avg:.0f}ms (>300ms indica loop ou gargalo grave).", "camera": cam})
+                elif avg > 80:
+                    issues.append({"severity": "warning", "icon": "speedometer2", "type": "high_latency",
+                        "title": "Latência alta",
+                        "detail": f"{label}: latência {avg:.0f}ms (esperado <20ms em LAN).", "camera": cam})
+                if jitter > 100:
+                    issues.append({"severity": "danger", "icon": "graph-up-arrow", "type": "jitter",
+                        "title": "Instabilidade grave (jitter alto)",
+                        "detail": f"{label}: jitter {jitter:.0f}ms — provável loop de rede ou broadcast storm.", "camera": cam})
+                elif jitter > 40:
+                    issues.append({"severity": "warning", "icon": "graph-up", "type": "jitter",
+                        "title": "Conexão instável",
+                        "detail": f"{label}: jitter {jitter:.0f}ms acima do normal.", "camera": cam})
+                if loss >= 50:
+                    issues.append({"severity": "danger", "icon": "reception-0", "type": "packet_loss",
+                        "title": f"Perda de pacotes grave: {loss:.0f}%",
+                        "detail": f"{label}: {loss:.0f}% dos pacotes TCP perdidos.", "camera": cam})
+                elif loss > 0:
+                    issues.append({"severity": "warning", "icon": "reception-2", "type": "packet_loss",
+                        "title": f"Perda de pacotes: {loss:.0f}%",
+                        "detail": f"{label}: {loss:.0f}% dos pacotes perdidos.", "camera": cam})
+
+            network_stats.append({
+                "cam": cam, "reachable": p["reachable"],
+                "avg_ms": p["avg_ms"], "jitter_ms": p["jitter_ms"], "loss_pct": p["loss_pct"],
+            })
+
+    return {
+        "issues": issues,
+        "network_stats": network_stats,
+        "cameras": cameras,
+        "cameras_total": len(cameras),
+        "online_count": sum(1 for c in cameras if c.is_online),
+        "offline_count": sum(1 for c in cameras if not c.is_online),
+    }
+
+
 # ── Diagnostics ───────────────────────────────────────────────────────────────
 @app.get("/diagnostics", response_class=HTMLResponse)
 async def diagnostics_page(request: Request):
@@ -542,161 +658,21 @@ async def run_diagnostics(request: Request):
     user = get_user(request)
     if not user:
         return HTMLResponse("", status_code=401)
+    data = await _collect_diagnostics()
+    return templates.TemplateResponse("partials/diagnostics_result.html", {"request": request, **data})
 
-    issues: list[dict] = []
-    cameras = list(Camera.select())
 
-    # ── Verificações estáticas (BD + ARP) ────────────────────────────────────
-
-    # 1. Câmeras offline que já foram vistas
-    for cam in cameras:
-        if not cam.is_online and cam.last_seen_at:
-            issues.append({
-                "severity": "warning", "icon": "wifi-off",
-                "type": "offline", "title": "Câmera offline",
-                "detail": f"{cam.name or cam.ip_address} — última resposta em {cam.last_seen_at.strftime('%d/%m/%Y %H:%M')}",
-                "camera": cam,
-            })
-
-    # 2. Câmeras nunca vistas
-    for cam in cameras:
-        if cam.last_seen_at is None:
-            issues.append({
-                "severity": "info", "icon": "question-circle",
-                "type": "never_seen", "title": "Nunca respondeu",
-                "detail": f"{cam.name or cam.ip_address} ({cam.ip_address}) — cadastrada mas nunca foi vista online",
-                "camera": cam,
-            })
-
-    # 3. Conflito IP/MAC via ARP
-    arp_map = NetworkScanner.parse_arp_table()
-    for cam in cameras:
-        if cam.mac_address and cam.ip_address in arp_map:
-            current = arp_map[cam.ip_address].upper()
-            saved = cam.mac_address.upper()
-            if current != saved:
-                issues.append({
-                    "severity": "danger", "icon": "shield-exclamation",
-                    "type": "ip_conflict", "title": "Conflito IP/MAC",
-                    "detail": f"IP {cam.ip_address} agora responde com MAC {current} (salvo: {saved}). Possível substituição ou invasão.",
-                    "camera": cam,
-                })
-
-    # 4. MAC duplicado no BD
-    mac_map: dict[str, list] = {}
-    for cam in cameras:
-        if cam.mac_address:
-            mac_map.setdefault(cam.mac_address.upper(), []).append(cam)
-    for mac, cams in mac_map.items():
-        if len(cams) > 1:
-            issues.append({
-                "severity": "warning", "icon": "diagram-2",
-                "type": "duplicate_mac", "title": "MAC duplicado",
-                "detail": f"MAC {mac} em {len(cams)} IPs: {', '.join(c.ip_address for c in cams)}. Câmera pode ter mudado de IP.",
-                "camera": cams[0],
-            })
-
-    # 5. Sem credenciais
-    for cam in cameras:
-        if not cam.username:
-            issues.append({
-                "severity": "info", "icon": "key",
-                "type": "no_credentials", "title": "Sem credenciais",
-                "detail": f"{cam.name or cam.ip_address} ({cam.ip_address}) — sem usuário/senha cadastrado",
-                "camera": cam,
-            })
-
-    # ── Verificações ativas (TCP ping) ───────────────────────────────────────
-    network_stats: list[dict] = []
-
-    if cameras:
-        def _get_port(cam: Camera) -> int:
-            ports = [int(p) for p in (cam.open_ports_csv or "").split(",") if p.strip().isdigit()]
-            return ports[0] if ports else 554
-
-        ping_tasks = [_tcp_ping_multi(cam.ip_address, _get_port(cam)) for cam in cameras]
-        ping_results = await asyncio.gather(*ping_tasks)
-
-        for cam, p in zip(cameras, ping_results):
-            label = cam.name or cam.ip_address
-
-            # Câmera marcada online mas não responde agora → travamento/hang
-            if cam.is_online and not p["reachable"]:
-                issues.append({
-                    "severity": "danger", "icon": "slash-circle",
-                    "type": "frozen", "title": "Câmera não responde (possível travamento)",
-                    "detail": f"{label} ({cam.ip_address}) está marcada como online no BD mas não respondeu a nenhum dos 4 pings TCP. Verifique se está travada ou desconectada.",
-                    "camera": cam,
-                })
-
-            elif p["reachable"]:
-                avg = p["avg_ms"]
-                jitter = p["jitter_ms"]
-                loss = p["loss_pct"]
-
-                # Latência crítica → provável loop de rede ou gargalo grave
-                if avg > 300:
-                    issues.append({
-                        "severity": "danger", "icon": "speedometer",
-                        "type": "high_latency", "title": "Latência crítica — possível loop de rede",
-                        "detail": f"{label}: latência média de {avg:.0f}ms (>300ms em LAN é anormal). Sintoma típico de loop de rede ou switch saturado.",
-                        "camera": cam,
-                    })
-                elif avg > 80:
-                    issues.append({
-                        "severity": "warning", "icon": "speedometer2",
-                        "type": "high_latency", "title": "Latência alta",
-                        "detail": f"{label}: latência de {avg:.0f}ms (esperado <20ms em LAN). Pode indicar congestionamento ou cabo de baixa qualidade.",
-                        "camera": cam,
-                    })
-
-                # Jitter alto → instabilidade / loop / burst de broadcast
-                if jitter > 100:
-                    issues.append({
-                        "severity": "danger", "icon": "graph-up-arrow",
-                        "type": "jitter", "title": "Instabilidade grave (jitter alto)",
-                        "detail": f"{label}: variação de {jitter:.0f}ms entre pings. Indica loop de rede ativo, broadcast storm ou switch com problema.",
-                        "camera": cam,
-                    })
-                elif jitter > 40:
-                    issues.append({
-                        "severity": "warning", "icon": "graph-up",
-                        "type": "jitter", "title": "Conexão instável",
-                        "detail": f"{label}: jitter de {jitter:.0f}ms — conexão com variação acima do normal.",
-                        "camera": cam,
-                    })
-
-                # Perda de pacotes → gargalo ou loop
-                if loss >= 50:
-                    issues.append({
-                        "severity": "danger", "icon": "reception-0",
-                        "type": "packet_loss", "title": f"Perda de pacotes grave: {loss:.0f}%",
-                        "detail": f"{label}: {loss:.0f}% dos pacotes TCP perdidos. Possível loop de rede, switch saturado ou falha de cabo.",
-                        "camera": cam,
-                    })
-                elif loss > 0:
-                    issues.append({
-                        "severity": "warning", "icon": "reception-2",
-                        "type": "packet_loss", "title": f"Perda de pacotes: {loss:.0f}%",
-                        "detail": f"{label}: {loss:.0f}% dos pacotes perdidos — instabilidade intermitente.",
-                        "camera": cam,
-                    })
-
-            network_stats.append({
-                "cam": cam,
-                "reachable": p["reachable"],
-                "avg_ms": p["avg_ms"],
-                "jitter_ms": p["jitter_ms"],
-                "loss_pct": p["loss_pct"],
-            })
-
-    return templates.TemplateResponse("partials/diagnostics_result.html", {
+@app.get("/diagnostics/report", response_class=HTMLResponse)
+async def diagnostics_report(request: Request):
+    user = get_user(request)
+    if not user:
+        return RedirectResponse("/login")
+    data = await _collect_diagnostics()
+    return templates.TemplateResponse("report.html", {
         "request": request,
-        "issues": issues,
-        "network_stats": network_stats,
-        "cameras_total": len(cameras),
-        "online_count": sum(1 for c in cameras if c.is_online),
-        "offline_count": sum(1 for c in cameras if not c.is_online),
+        "generated_at": datetime.now().strftime("%d/%m/%Y às %H:%M"),
+        "generated_by": user.username,
+        **data,
     })
 
 

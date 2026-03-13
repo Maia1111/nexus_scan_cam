@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Relatório de Saúde da Rede — Câmeras IP</title>
+  <style>
+    /* ── Reset & base ─────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 11pt;
+      color: #1a2540;
+      background: #fff;
+      padding: 0;
+    }
+
+    /* ── Page layout ─────────────────────────────────── */
+    .page {
+      max-width: 210mm;
+      margin: 0 auto;
+      padding: 14mm 16mm 14mm;
+    }
+
+    /* ── Header ──────────────────────────────────────── */
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-bottom: 14px;
+      border-bottom: 3px solid #1d4ed8;
+      margin-bottom: 22px;
+    }
+    .report-header .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .report-header .brand-icon {
+      width: 44px; height: 44px;
+      background: #1d4ed8;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; color: #fff;
+    }
+    .report-header .brand-name {
+      font-size: 18pt;
+      font-weight: 700;
+      color: #1d4ed8;
+      line-height: 1;
+    }
+    .report-header .brand-sub {
+      font-size: 9pt;
+      color: #6b7280;
+      margin-top: 3px;
+    }
+    .report-header .meta {
+      text-align: right;
+      font-size: 9pt;
+      color: #6b7280;
+      line-height: 1.7;
+    }
+    .report-header .meta strong {
+      color: #1a2540;
+    }
+
+    /* ── Section title ────────────────────────────────── */
+    .section-title {
+      font-size: 12pt;
+      font-weight: 700;
+      color: #1d4ed8;
+      border-left: 4px solid #1d4ed8;
+      padding-left: 8px;
+      margin: 22px 0 12px;
+    }
+
+    /* ── Summary cards ────────────────────────────────── */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .summary-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 12px 10px;
+      text-align: center;
+    }
+    .summary-card .number {
+      font-size: 24pt;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .summary-card .label {
+      font-size: 8.5pt;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+    .num-total   { color: #1d4ed8; }
+    .num-ok      { color: #16a34a; }
+    .num-offline { color: #dc2626; }
+    .num-issues  { color: #d97706; }
+
+    .card-total   { border-top: 3px solid #1d4ed8; }
+    .card-ok      { border-top: 3px solid #16a34a; }
+    .card-offline { border-top: 3px solid #dc2626; }
+    .card-issues  { border-top: 3px solid #d97706; }
+
+    /* ── Status badge ─────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 8pt;
+      font-weight: 600;
+    }
+    .badge-ok      { background: #dcfce7; color: #15803d; }
+    .badge-warn    { background: #fef9c3; color: #92400e; }
+    .badge-danger  { background: #fee2e2; color: #991b1b; }
+    .badge-info    { background: #e0f2fe; color: #075985; }
+    .badge-offline { background: #fee2e2; color: #991b1b; }
+    .badge-online  { background: #dcfce7; color: #15803d; }
+
+    /* ── Tables ──────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9.5pt;
+      margin-bottom: 6px;
+    }
+    thead th {
+      background: #1d4ed8;
+      color: #fff;
+      padding: 7px 10px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 8.5pt;
+      letter-spacing: .03em;
+    }
+    tbody tr:nth-child(even) { background: #f8fafc; }
+    tbody tr:hover { background: #eff6ff; }
+    tbody td {
+      padding: 6px 10px;
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: middle;
+    }
+    .td-mono { font-family: 'Consolas', 'Courier New', monospace; font-size: 9pt; }
+    .td-muted { color: #6b7280; }
+
+    /* Metric colors */
+    .lat-ok   { color: #16a34a; font-weight: 600; }
+    .lat-warn { color: #d97706; font-weight: 600; }
+    .lat-bad  { color: #dc2626; font-weight: 700; }
+
+    /* ── Issues list ─────────────────────────────────── */
+    .issue-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 8px 10px;
+      border-radius: 6px;
+      margin-bottom: 6px;
+      border-left: 4px solid;
+    }
+    .issue-danger  { background: #fff5f5; border-color: #dc2626; }
+    .issue-warning { background: #fffbeb; border-color: #f59e0b; }
+    .issue-info    { background: #f0f9ff; border-color: #38bdf8; }
+
+    .issue-icon {
+      font-size: 14pt;
+      margin-top: 1px;
+      flex-shrink: 0;
+    }
+    .icon-danger  { color: #dc2626; }
+    .icon-warning { color: #d97706; }
+    .icon-info    { color: #0284c7; }
+
+    .issue-title { font-weight: 700; font-size: 10pt; }
+    .issue-detail { font-size: 9pt; color: #4b5563; margin-top: 2px; }
+
+    .no-issues-box {
+      text-align: center;
+      padding: 24px;
+      border: 2px dashed #86efac;
+      border-radius: 8px;
+      background: #f0fdf4;
+      color: #15803d;
+    }
+    .no-issues-box .check-icon { font-size: 28pt; }
+    .no-issues-box p { margin-top: 6px; font-size: 11pt; font-weight: 600; }
+
+    /* ── Footer ──────────────────────────────────────── */
+    .report-footer {
+      margin-top: 30px;
+      padding-top: 10px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 8.5pt;
+      color: #9ca3af;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── Print button (tela) ─────────────────────────── */
+    .print-bar {
+      background: #1d4ed8;
+      color: #fff;
+      padding: 10px 16mm;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 10pt;
+    }
+    .print-bar button {
+      background: #fff;
+      color: #1d4ed8;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 16px;
+      font-size: 10pt;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .print-bar button:hover { background: #dbeafe; }
+    .print-bar .close-btn {
+      margin-left: auto;
+      background: transparent;
+      color: #bfdbfe;
+      font-size: 9pt;
+      font-weight: 400;
+    }
+
+    /* ── Print media ─────────────────────────────────── */
+    @media print {
+      .print-bar { display: none !important; }
+      .page { padding: 10mm 12mm; }
+      body { font-size: 10pt; }
+      @page { margin: 10mm; size: A4; }
+      thead { display: table-header-group; }
+      tr { page-break-inside: avoid; }
+      .issue-item { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Barra de impressão (só na tela) -->
+<div class="print-bar">
+  <span>📋 Relatório pronto</span>
+  <button onclick="window.print()">🖨 Imprimir / Salvar PDF</button>
+  <button class="close-btn" onclick="window.close()">✕ Fechar</button>
+</div>
+
+<div class="page">
+
+  <!-- ── Cabeçalho ──────────────────────────────────── -->
+  <div class="report-header">
+    <div class="brand">
+      <div class="brand-icon">📷</div>
+      <div>
+        <div class="brand-name">Scanner IP</div>
+        <div class="brand-sub">Relatório de Saúde da Rede — Câmeras IP</div>
+      </div>
+    </div>
+    <div class="meta">
+      <div><strong>Gerado em:</strong> {{ generated_at }}</div>
+      <div><strong>Responsável:</strong> {{ generated_by }}</div>
+      <div><strong>Total de câmeras:</strong> {{ cameras_total }}</div>
+    </div>
+  </div>
+
+  <!-- ── Resumo executivo ───────────────────────────── -->
+  <div class="section-title">Resumo Executivo</div>
+
+  {% set issues_count = issues | length %}
+  {% set danger_count = issues | selectattr("severity","equalto","danger") | list | length %}
+  {% set cameras_with_issues = issues | map(attribute="camera") | selectattr("ip_address") | map(attribute="ip_address") | list | unique | list | length %}
+
+  <div class="summary-grid">
+    <div class="summary-card card-total">
+      <div class="number num-total">{{ cameras_total }}</div>
+      <div class="label">Câmeras cadastradas</div>
+    </div>
+    <div class="summary-card card-ok">
+      <div class="number num-ok">{{ online_count }}</div>
+      <div class="label">Online agora</div>
+    </div>
+    <div class="summary-card card-offline">
+      <div class="number num-offline">{{ offline_count }}</div>
+      <div class="label">Offline</div>
+    </div>
+    <div class="summary-card card-issues">
+      <div class="number num-issues">{{ issues_count }}</div>
+      <div class="label">Ocorrências encontradas</div>
+    </div>
+  </div>
+
+  {% if danger_count > 0 %}
+  <p style="margin-top:10px; font-size:9.5pt; color:#dc2626;">
+    ⚠ <strong>{{ danger_count }} ocorrência(s) crítica(s)</strong> requerem atenção imediata.
+  </p>
+  {% elif issues_count > 0 %}
+  <p style="margin-top:10px; font-size:9.5pt; color:#d97706;">
+    ℹ <strong>{{ issues_count }} ocorrência(s)</strong> encontradas — nenhuma crítica no momento.
+  </p>
+  {% else %}
+  <p style="margin-top:10px; font-size:9.5pt; color:#16a34a;">
+    ✔ Nenhum problema encontrado. Rede operando normalmente.
+  </p>
+  {% endif %}
+
+  <!-- ── Métricas de rede ───────────────────────────── -->
+  {% if network_stats %}
+  <div class="section-title">Métricas de Rede — TCP Ping ×4 por câmera</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Câmera</th>
+        <th>IP</th>
+        <th>Marca</th>
+        <th>Latência méd.</th>
+        <th>Jitter</th>
+        <th>Perda pacotes</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in network_stats %}
+      {% set cam = s.cam %}
+      <tr>
+        <td>{{ cam.name or '—' }}</td>
+        <td class="td-mono">{{ cam.ip_address }}</td>
+        <td>{{ cam.brand }}</td>
+        <td>
+          {% if s.avg_ms is not none %}
+            {% if s.avg_ms > 300 %}
+              <span class="lat-bad">{{ "%.0f"|format(s.avg_ms) }}ms</span>
+            {% elif s.avg_ms > 80 %}
+              <span class="lat-warn">{{ "%.0f"|format(s.avg_ms) }}ms</span>
+            {% else %}
+              <span class="lat-ok">{{ "%.0f"|format(s.avg_ms) }}ms</span>
+            {% endif %}
+          {% else %}
+            <span class="td-muted">—</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if s.jitter_ms and s.jitter_ms > 0 %}
+            {% if s.jitter_ms > 100 %}<span class="lat-bad">{{ "%.0f"|format(s.jitter_ms) }}ms</span>
+            {% elif s.jitter_ms > 40 %}<span class="lat-warn">{{ "%.0f"|format(s.jitter_ms) }}ms</span>
+            {% else %}<span class="td-muted">{{ "%.0f"|format(s.jitter_ms) }}ms</span>{% endif %}
+          {% else %}<span class="td-muted">0ms</span>{% endif %}
+        </td>
+        <td>
+          {% if s.loss_pct > 0 %}
+            <span class="{{ 'lat-bad' if s.loss_pct >= 50 else 'lat-warn' }}">{{ "%.0f"|format(s.loss_pct) }}%</span>
+          {% else %}<span class="lat-ok">0%</span>{% endif %}
+        </td>
+        <td>
+          {% if not s.reachable %}
+            <span class="badge badge-danger">Sem resposta</span>
+          {% elif s.avg_ms > 300 or s.jitter_ms > 100 or s.loss_pct >= 50 %}
+            <span class="badge badge-danger">Crítico</span>
+          {% elif s.avg_ms > 80 or s.jitter_ms > 40 or s.loss_pct > 0 %}
+            <span class="badge badge-warn">Atenção</span>
+          {% else %}
+            <span class="badge badge-ok">Normal</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p style="font-size:8pt; color:#9ca3af; margin-top:4px;">
+    Referência: latência esperada em LAN &lt;20ms · jitter normal &lt;5ms · perda aceitável 0%
+  </p>
+  {% endif %}
+
+  <!-- ── Ocorrências encontradas ────────────────────── -->
+  <div class="section-title">Ocorrências Encontradas</div>
+
+  {% set danger_issues  = issues | selectattr("severity","equalto","danger")  | list %}
+  {% set warning_issues = issues | selectattr("severity","equalto","warning") | list %}
+  {% set info_issues    = issues | selectattr("severity","equalto","info")    | list %}
+
+  {% if not issues %}
+  <div class="no-issues-box">
+    <div class="check-icon">✅</div>
+    <p>Nenhuma ocorrência encontrada</p>
+    <p style="font-size:9pt; color:#4ade80; margin-top:4px;">Todas as câmeras operando dentro dos parâmetros normais.</p>
+  </div>
+
+  {% else %}
+
+  {% if danger_issues %}
+  <p style="font-weight:700; color:#dc2626; margin-bottom:8px;">🔴 Crítico ({{ danger_issues|length }})</p>
+  {% for issue in danger_issues %}
+  <div class="issue-item issue-danger">
+    <div class="issue-icon icon-danger">⛔</div>
+    <div>
+      <div class="issue-title">{{ issue.title }}</div>
+      <div class="issue-detail">{{ issue.detail }}</div>
+      {% if issue.camera %}<div style="font-size:8.5pt; color:#9ca3af; margin-top:2px;">IP: {{ issue.camera.ip_address }}</div>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if warning_issues %}
+  <p style="font-weight:700; color:#d97706; margin: 14px 0 8px;">🟡 Atenção ({{ warning_issues|length }})</p>
+  {% for issue in warning_issues %}
+  <div class="issue-item issue-warning">
+    <div class="issue-icon icon-warning">⚠</div>
+    <div>
+      <div class="issue-title">{{ issue.title }}</div>
+      <div class="issue-detail">{{ issue.detail }}</div>
+      {% if issue.camera %}<div style="font-size:8.5pt; color:#9ca3af; margin-top:2px;">IP: {{ issue.camera.ip_address }}</div>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% if info_issues %}
+  <p style="font-weight:700; color:#0284c7; margin: 14px 0 8px;">🔵 Informativo ({{ info_issues|length }})</p>
+  {% for issue in info_issues %}
+  <div class="issue-item issue-info">
+    <div class="issue-icon icon-info">ℹ</div>
+    <div>
+      <div class="issue-title">{{ issue.title }}</div>
+      <div class="issue-detail">{{ issue.detail }}</div>
+      {% if issue.camera %}<div style="font-size:8.5pt; color:#9ca3af; margin-top:2px;">IP: {{ issue.camera.ip_address }}</div>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  {% endif %}
+
+  <!-- ── Inventário completo ────────────────────────── -->
+  <div class="section-title">Inventário de Câmeras</div>
+  {% if cameras %}
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Nome</th>
+        <th>IP</th>
+        <th>MAC</th>
+        <th>Marca</th>
+        <th>Grupo</th>
+        <th>Localização</th>
+        <th>Status</th>
+        <th>Latência</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for cam in cameras %}
+      <tr>
+        <td class="td-muted">{{ loop.index }}</td>
+        <td>{{ cam.name or '—' }}</td>
+        <td class="td-mono">{{ cam.ip_address }}</td>
+        <td class="td-mono" style="font-size:8pt;">{{ cam.mac_address or '—' }}</td>
+        <td>{{ cam.brand }}</td>
+        <td>{% if cam.group_id %}{{ cam.group.name }}{% else %}—{% endif %}</td>
+        <td>{{ cam.location or '—' }}</td>
+        <td>
+          {% if cam.is_online %}
+            <span class="badge badge-online">Online</span>
+          {% else %}
+            <span class="badge badge-offline">Offline</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if cam.latency_ms %}
+            {{ "%.0f"|format(cam.latency_ms) }}ms
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="td-muted">Nenhuma câmera cadastrada.</p>
+  {% endif %}
+
+  <!-- ── Rodapé ─────────────────────────────────────── -->
+  <div class="report-footer">
+    <span>Scanner de Câmeras IP · Relatório gerado em {{ generated_at }} por {{ generated_by }}</span>
+    <span>Página <span class="page-num"></span></span>
+  </div>
+
+</div><!-- .page -->
+
+<script>
+  // Numeração de páginas
+  document.querySelectorAll('.page-num').forEach((el, i) => el.textContent = i + 1);
+</script>
+</body>
+</html>
