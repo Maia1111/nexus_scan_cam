@@ -12,6 +12,7 @@ from typing import AsyncGenerator, Optional
 
 import httpx
 import uvicorn
+from weasyprint import HTML as WeasyHTML
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -579,6 +580,46 @@ async def _collect_diagnostics() -> dict:
                 "camera": cam,
             })
 
+    # 6. Câmeras com IP dinâmico (DHCP) — MAC encontrado em IP diferente do salvo
+    mac_to_current_ip: dict[str, str] = {}
+    for arp_ip, arp_mac in arp_map.items():
+        mac_to_current_ip[arp_mac.upper()] = arp_ip
+
+    for cam in cameras:
+        if cam.mac_address:
+            mac = cam.mac_address.upper()
+            current_ip = mac_to_current_ip.get(mac)
+            if current_ip and current_ip != cam.ip_address:
+                issues.append({
+                    "severity": "warning", "icon": "arrow-repeat",
+                    "type": "dhcp", "title": "IP dinâmico detectado (DHCP)",
+                    "detail": (
+                        f"{cam.name or cam.ip_address}: MAC {cam.mac_address} agora está no IP {current_ip} "
+                        f"(cadastrado como {cam.ip_address}). A câmera provavelmente usa DHCP — "
+                        f"configure um IP fixo no roteador ou na câmera para evitar perda de acesso."
+                    ),
+                    "camera": cam,
+                })
+
+    # 7. NVR/DVR detectado — múltiplas portas de gestão abertas simultaneamente
+    NVR_PORTS = {80, 443, 554, 8000, 37777, 34567, 8554}
+    NVR_THRESHOLD = 3
+    for cam in cameras:
+        ports = {int(p) for p in (cam.open_ports_csv or "").split(",") if p.strip().isdigit()}
+        nvr_ports_open = ports & NVR_PORTS
+        if len(nvr_ports_open) >= NVR_THRESHOLD and cam.score >= 70:
+            issues.append({
+                "severity": "info", "icon": "hdd-network",
+                "type": "nvr", "title": "Possível NVR/DVR detectado",
+                "detail": (
+                    f"{cam.name or cam.ip_address} ({cam.ip_address}) — {len(nvr_ports_open)} portas de gerenciamento abertas: "
+                    f"{', '.join(str(p) for p in sorted(nvr_ports_open))}. "
+                    f"Dispositivo provavelmente é um gravador (NVR/DVR). "
+                    f"Cadastre as câmeras individuais conectadas a ele separadamente."
+                ),
+                "camera": cam,
+            })
+
     # Verificações ativas (TCP ping)
     network_stats: list[dict] = []
     if cameras:
@@ -672,8 +713,38 @@ async def diagnostics_report(request: Request):
         "request": request,
         "generated_at": datetime.now().strftime("%d/%m/%Y às %H:%M"),
         "generated_by": user.username,
+        "for_print": False,
         **data,
     })
+
+
+@app.get("/diagnostics/report/pdf")
+async def diagnostics_report_pdf(request: Request):
+    user = get_user(request)
+    if not user:
+        return RedirectResponse("/login")
+
+    data = await _collect_diagnostics()
+    html_content = templates.get_template("report.html").render({
+        "request": request,
+        "generated_at": datetime.now().strftime("%d/%m/%Y às %H:%M"),
+        "generated_by": user.username,
+        "for_print": True,
+        **data,
+    })
+
+    loop = asyncio.get_running_loop()
+    pdf_bytes = await loop.run_in_executor(
+        None,
+        lambda: WeasyHTML(string=html_content).write_pdf()
+    )
+
+    filename = f"relatorio_cameras_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ── Camera snapshot viewer ─────────────────────────────────────────────────────
