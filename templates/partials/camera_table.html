@@ -5,11 +5,11 @@
       <tr>
         <th>Status</th>
         <th>Nome</th>
-        <th>Marca</th>
+        <th class="d-none d-md-table-cell">Marca</th>
         <th>IP</th>
-        <th>MAC</th>
-        <th>Grupo</th>
-        <th>Local</th>
+        <th class="d-none d-md-table-cell">MAC</th>
+        <th class="d-none d-md-table-cell">Grupo</th>
+        <th class="d-none d-md-table-cell">Local</th>
         <th>Latência</th>
         <th style="width:130px">Ações</th>
       </tr>
@@ -25,11 +25,11 @@
           {% endif %}
         </td>
         <td>{{ cam.name or '—' }}</td>
-        <td><span class="badge bg-secondary">{{ cam.brand }}</span></td>
+        <td class="d-none d-md-table-cell"><span class="badge bg-secondary">{{ cam.brand }}</span></td>
         <td><code>{{ cam.ip_address }}</code></td>
-        <td><small class="text-secondary">{{ cam.mac_address or '—' }}</small></td>
-        <td>{% if cam.group_id %}{{ cam.group.name }}{% else %}—{% endif %}</td>
-        <td>{{ cam.location or '—' }}</td>
+        <td class="d-none d-md-table-cell"><small class="text-secondary">{{ cam.mac_address or '—' }}</small></td>
+        <td class="d-none d-md-table-cell">{% if cam.group_id %}{{ cam.group.name }}{% else %}—{% endif %}</td>
+        <td class="d-none d-md-table-cell">{{ cam.location or '—' }}</td>
         <td>
           {% if cam.latency_ms %}
           <span class="text-info">{{ "%.0f"|format(cam.latency_ms) }}ms</span>

@@ -46,8 +46,8 @@
             <th>Status</th>
             <th>Nome</th>
             <th>IP</th>
-            <th>Marca</th>
-            <th>Latência</th>
+            <th class="d-none d-md-table-cell">Marca</th>
+            <th class="d-none d-md-table-cell">Latência</th>
             {% if is_admin %}<th></th>{% endif %}
           </tr>
         </thead>
@@ -63,8 +63,8 @@
             </td>
             <td>{{ cam.name or '—' }}</td>
             <td><code>{{ cam.ip_address }}</code></td>
-            <td><span class="badge bg-secondary">{{ cam.brand }}</span></td>
-            <td>
+            <td class="d-none d-md-table-cell"><span class="badge bg-secondary">{{ cam.brand }}</span></td>
+            <td class="d-none d-md-table-cell">
               {% if cam.latency_ms %}
               <span class="text-info">{{ "%.0f"|format(cam.latency_ms) }}ms</span>
               {% else %}—{% endif %}
