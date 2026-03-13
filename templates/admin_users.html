@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title">
+  <i class="bi bi-people"></i> Gerenciamento de Usuários
+</div>
+
+<div class="row g-3">
+  <!-- Formulário de Novo Usuário -->
+  <div class="col-md-4">
+    <div class="card p-3">
+      <h6 class="mb-3">Novo Usuário</h6>
+      <form hx-post="/api/admin/users" hx-target="#user-table-container">
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          <input type="text" name="username" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Senha Inicial</label>
+          <input type="password" name="password" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Permissão</label>
+          <select name="role" class="form-select">
+            <option value="VIEWER">Visualizador</option>
+            <option value="ADMIN">Administrador</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm w-100">
+          <i class="bi bi-plus-lg"></i> Criar Usuário
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Lista de Usuários -->
+  <div class="col-md-8">
+    <div class="card p-3" id="user-table-container" hx-get="/partials/admin/users" hx-trigger="load">
+      <div class="text-center py-4">
+        <div class="spinner-border spinner-border-sm text-primary"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

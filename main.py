@@ -22,8 +22,9 @@ from models import (
     Camera,
     CameraGroup,
     User,
-    ensure_default_admin,
+    create_user,
     ensure_default_camera_group,
+    has_any_user,
     initialize_database,
     verify_password,
 )
@@ -68,7 +69,7 @@ def _status_callback(ip_addr: str, online: bool, latency_ms: Optional[float]) ->
 async def lifespan(app: FastAPI):
     global _monitor
     initialize_database()
-    ensure_default_admin()
+    # ensure_default_admin()  <-- Removido para forçar o setup manual
     ensure_default_camera_group()
     _monitor = CameraMonitor(
         camera_provider=_camera_provider,
@@ -98,7 +99,38 @@ def get_user(request: Request) -> Optional[User]:
 # ── Auth routes ───────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
+    if not has_any_user():
+        return RedirectResponse("/setup")
     return RedirectResponse("/cameras" if get_user(request) else "/login")
+
+
+@app.get("/setup", response_class=HTMLResponse)
+async def setup_page(request: Request):
+    if has_any_user():
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("setup.html", {"request": request})
+
+
+@app.post("/api/setup", response_class=HTMLResponse)
+async def setup_post(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    if has_any_user():
+        return HTMLResponse("Ação bloqueada: sistema já configurado.", status_code=403)
+    
+    if password != confirm_password:
+        return HTMLResponse("<div class='alert alert-danger px-2 py-1 small mb-2'>Senhas não conferem</div>")
+    
+    try:
+        user = create_user(username=username, plain_password=password, role="ADMIN")
+        request.session["username"] = user.username
+        # Redirecionamento via cabeçalho HX-Redirect (para o HTMX entender)
+        return Response(headers={"HX-Redirect": "/cameras"})
+    except Exception as e:
+        return HTMLResponse(f"<div class='alert alert-danger px-2 py-1 small mb-2'>Erro: {e}</div>")
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -792,6 +824,62 @@ async def camera_snapshot(
                 continue
 
     raise HTTPException(status_code=404, detail="Snapshot não disponível para esta câmera")
+
+
+# ── Admin Users ───────────────────────────────────────────────────────────────
+@app.get("/admin/users", response_class=HTMLResponse)
+async def admin_users_page(request: Request):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("admin_users.html", {
+        "request": request,
+        "user": user,
+    })
+
+
+@app.get("/partials/admin/users", response_class=HTMLResponse)
+async def admin_users_partial(request: Request):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("", status_code=401)
+    users = list(User.select().order_by(User.username))
+    return templates.TemplateResponse("partials/user_table.html", {
+        "request": request,
+        "users": users,
+        "current_user": user,
+    })
+
+
+@app.post("/api/admin/users", response_class=HTMLResponse)
+async def admin_create_user(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    role: str = Form("VIEWER"),
+):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("", status_code=401)
+    try:
+        create_user(username=username, plain_password=password, role=role)
+    except Exception as e:
+        return HTMLResponse(f"<div class='alert alert-danger px-2 py-1 small mb-2'>Erro: {e}</div>")
+    return await admin_users_partial(request)
+
+
+@app.post("/api/admin/users/{user_id}/toggle", response_class=HTMLResponse)
+async def admin_toggle_user(request: Request, user_id: int):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("", status_code=401)
+    
+    target = User.get_or_none(User.id == user_id)
+    if target and target.username != user.username:
+        target.is_active = not target.is_active
+        target.save()
+    
+    return await admin_users_partial(request)
 
 
 # ── Entrypoint ────────────────────────────────────────────────────────────────

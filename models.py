@@ -157,6 +157,11 @@ def ensure_schema_migrations() -> None:
         database.execute_sql("ALTER TABLE cameragroup ADD COLUMN longitude REAL")
 
 
+def has_any_user() -> bool:
+    initialize_database()
+    return User.select().exists()
+
+
 def ensure_default_camera_group() -> CameraGroup:
     initialize_database()
     group, _created = CameraGroup.get_or_create(name="Minhas Câmeras")
@@ -164,6 +169,7 @@ def ensure_default_camera_group() -> CameraGroup:
 
 
 def ensure_default_admin(username: str = "admin", password: str = "admin123") -> None:
+    """Opcional: cria o admin padrão se chamado explicitamente."""
     initialize_database()
     if not User.select().where(User.username == username).exists():
         create_user(username=username, plain_password=password, role="ADMIN")

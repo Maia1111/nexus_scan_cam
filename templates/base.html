@@ -169,6 +169,7 @@
 <body>
 
 <!-- ── Sidebar ────────────────────────────────────────────────── -->
+{% block sidebar %}
 <nav id="sidebar">
   <div class="sb-brand">
     <i class="bi bi-shield-check"></i>
@@ -197,6 +198,14 @@
       <i class="bi bi-activity"></i>
       <span>Saúde da Rede</span>
     </a>
+    
+    {% if user and user.role == 'ADMIN' %}
+    <div class="sb-section mt-2">Administração</div>
+    <a href="/admin/users" class="sb-item {{ 'active' if request.url.path == '/admin/users' }}">
+      <i class="bi bi-people"></i>
+      <span>Usuários</span>
+    </a>
+    {% endif %}
   </div>
 
   <div class="sb-footer">
@@ -213,6 +222,7 @@
     </a>
   </div>
 </nav>
+{% endblock %}
 
 <!-- ── Main ───────────────────────────────────────────────────── -->
 <main id="main-content">
