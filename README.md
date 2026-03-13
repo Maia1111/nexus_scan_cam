@@ -45,56 +45,19 @@ Antes de instalar, certifique-se de ter instalado em sua máquina:
 
 ## 🔧 Instalação
 
-### 🐧 No Linux (Ubuntu/Debian)
+### 🪟 No Windows (Modo Fácil - Um Clique) 📸
 
-1. **Clone o repositório:**
-   ```bash
-   git clone https://github.com/Maia1111/nexus_scan_cam.git
-   cd nexus_scan_cam
-   ```
+Para facilitar o uso, criamos um automatizador que configura tudo e cria um ícone de câmera na sua Área de Trabalho.
 
-2. **Crie um ambiente virtual (recomendado):**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
+1. **Baixe/Clone o projeto** e entre na pasta.
+2. Clique com o botão direito no arquivo `install_shortcut.ps1` e selecione **"Executar com o PowerShell"**.
+3. **Pronto!** Um ícone chamado **Nexus Scan** aparecerá na sua Área de Trabalho com a imagem de uma câmera.
 
-3. **Instale as dependências:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Inicie o servidor:**
-   ```bash
-   ./run.sh
-   ```
-   *Ou manualmente:* `uvicorn main:app --host 0.0.0.0 --port 8000`
+A partir de agora, basta clicar nesse ícone de câmera para abrir o sistema! 🚀
 
 ---
 
-### 🪟 No Windows
-
-1. **Abra o PowerShell ou Prompt de Comando e clone o repositório:**
-   ```powershell
-   git clone https://github.com/Maia1111/nexus_scan_cam.git
-   cd nexus_scan_cam
-   ```
-
-2. **Crie e ative o ambiente virtual:**
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\activate
-   ```
-
-3. **Instale as dependências:**
-   ```powershell
-   pip install -r requirements.txt
-   ```
-
-4. **Inicie o servidor:**
-   ```powershell
-   python main.py
-   ```
+### 🐧 No Linux (Ubuntu/Debian)
 
 ---
 
