@@ -1,4 +1,4 @@
-# PRD — IP Camera Scanner (versão Flet)
+# PRD — Nexus Scan IP Cam (versão Flet)
 **Data:** 2026-03-13  
 **Status do projeto:** Em desenvolvimento ativo  
 **Base de referência:** scanner_camera (v2.0, CustomTkinter) — versão funcional

@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-app.add_middleware(SessionMiddleware, secret_key="ip-cam-scanner-secret-2024")
+app.add_middleware(SessionMiddleware, secret_key="nexus-scan-ip-cam-secret-2024")
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["tojson"] = json.dumps
 
