@@ -1034,11 +1034,26 @@ async def admin_toggle_user(request: Request, user_id: int):
 
 
 # ── Entrypoint ────────────────────────────────────────────────────────────────
+def _find_free_port(start: int = 8000) -> int:
+    for port in range(start, start + 50):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("", port))
+                return port
+            except OSError:
+                continue
+    return start
+
+
 if __name__ == "__main__":
+    import os
+
+    port = int(os.environ.get("NEXUS_PORT", 0)) or _find_free_port()
+
     def _open_browser():
-        import time
-        time.sleep(1.5)
-        webbrowser.open("http://localhost:8000")
+        time.sleep(2.0)
+        webbrowser.open(f"http://localhost:{port}")
 
     threading.Thread(target=_open_browser, daemon=True).start()
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+    print(f"[Nexus Scan] Servidor em http://localhost:{port}")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
