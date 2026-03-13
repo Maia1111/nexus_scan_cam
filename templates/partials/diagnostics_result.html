@@ -1,0 +1,94 @@
+<!-- Resumo -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card text-center p-3">
+      <div style="font-size:2rem;" class="text-info">{{ cameras_total }}</div>
+      <div class="text-secondary small">Câmeras cadastradas</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center p-3">
+      <div style="font-size:2rem;" class="text-success">{{ online_count }}</div>
+      <div class="text-secondary small">Online agora</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card text-center p-3">
+      <div style="font-size:2rem;" class="{{ 'text-danger' if offline_count > 0 else 'text-success' }}">{{ offline_count }}</div>
+      <div class="text-secondary small">Offline</div>
+    </div>
+  </div>
+</div>
+
+<!-- Problemas -->
+{% set danger_issues  = issues | selectattr("severity", "equalto", "danger")  | list %}
+{% set warning_issues = issues | selectattr("severity", "equalto", "warning") | list %}
+{% set info_issues    = issues | selectattr("severity", "equalto", "info")    | list %}
+
+{% if not issues %}
+<div class="card text-center py-5">
+  <div class="text-success" style="font-size:3rem;"><i class="bi bi-check-circle-fill"></i></div>
+  <h5 class="mt-3">Nenhum problema encontrado!</h5>
+  <p class="text-secondary">Todas as câmeras estão funcionando corretamente.</p>
+</div>
+
+{% else %}
+
+{% if danger_issues %}
+<h6 class="text-danger mb-2"><i class="bi bi-x-circle-fill"></i> Crítico ({{ danger_issues | length }})</h6>
+{% for issue in danger_issues %}
+<div class="alert alert-danger d-flex align-items-start gap-3 py-2 mb-2">
+  <i class="bi bi-{{ issue.icon }} fs-5 mt-1 flex-shrink-0"></i>
+  <div>
+    <strong>{{ issue.title }}</strong><br>
+    <small>{{ issue.detail }}</small>
+    {% if issue.camera %}
+    <br><a href="/cameras" class="text-danger small">
+      <i class="bi bi-arrow-right-circle"></i> Ver câmera {{ issue.camera.ip_address }}
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if warning_issues %}
+<h6 class="text-warning mb-2 mt-3"><i class="bi bi-exclamation-triangle-fill"></i> Atenção ({{ warning_issues | length }})</h6>
+{% for issue in warning_issues %}
+<div class="alert alert-warning d-flex align-items-start gap-3 py-2 mb-2">
+  <i class="bi bi-{{ issue.icon }} fs-5 mt-1 flex-shrink-0"></i>
+  <div>
+    <strong>{{ issue.title }}</strong><br>
+    <small>{{ issue.detail }}</small>
+    {% if issue.camera %}
+    <br><a href="/cameras" class="text-warning small">
+      <i class="bi bi-arrow-right-circle"></i> Ver câmera {{ issue.camera.ip_address }}
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+{% if info_issues %}
+<h6 class="text-info mb-2 mt-3"><i class="bi bi-info-circle-fill"></i> Informativo ({{ info_issues | length }})</h6>
+{% for issue in info_issues %}
+<div class="alert alert-secondary d-flex align-items-start gap-3 py-2 mb-2">
+  <i class="bi bi-{{ issue.icon }} fs-5 mt-1 flex-shrink-0 text-info"></i>
+  <div>
+    <strong>{{ issue.title }}</strong><br>
+    <small>{{ issue.detail }}</small>
+    {% if issue.camera %}
+    <br><a href="/cameras" class="text-secondary small">
+      <i class="bi bi-arrow-right-circle"></i> Ver câmera {{ issue.camera.ip_address }}
+    </a>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<div class="text-secondary small mt-3">
+  <i class="bi bi-clock"></i> Diagnóstico executado agora
+</div>
+{% endif %}

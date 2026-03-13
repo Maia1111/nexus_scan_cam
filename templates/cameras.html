@@ -106,6 +106,48 @@
   </div>
 </div>
 
+<!-- Modal Ver Câmera -->
+<div class="modal fade" id="viewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-eye"></i> <span id="view-title">Câmera</span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" onclick="stopView()"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3 mb-3">
+          <div class="col">
+            <label class="form-label text-secondary small">Usuário</label>
+            <input type="text" id="view-username" class="form-control form-control-sm" placeholder="admin">
+          </div>
+          <div class="col">
+            <label class="form-label text-secondary small">Senha</label>
+            <input type="password" id="view-password" class="form-control form-control-sm">
+          </div>
+          <div class="col-auto d-flex align-items-end">
+            <button class="btn btn-primary btn-sm" onclick="loadSnapshot()">
+              <i class="bi bi-play-fill"></i> Conectar
+            </button>
+          </div>
+        </div>
+        <div id="view-container" class="text-center">
+          <div id="view-placeholder" class="py-5 text-secondary">
+            <i class="bi bi-camera-video" style="font-size:3rem;"></i>
+            <p class="mt-2">Clique em <strong>Conectar</strong> para tentar carregar a imagem</p>
+          </div>
+          <img id="view-img" class="img-fluid rounded d-none" style="max-height:480px;">
+          <div id="view-error" class="d-none alert alert-warning mt-2">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span id="view-error-msg"></span>
+            <hr>
+            <small>Tente acessar diretamente: <code id="view-rtsp"></code></small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Confirmação de Exclusão -->
 <div class="modal fade" id="deleteModal" tabindex="-1">
   <div class="modal-dialog modal-sm">
@@ -173,6 +215,42 @@ async function submitForm() {
 
   document.getElementById('camera-list').innerHTML = html;
   bootstrap.Modal.getInstance(document.getElementById('cameraModal')).hide();
+}
+
+let _viewCameraId = null;
+
+function openViewModal(btn) {
+  _viewCameraId = btn.dataset.id;
+  document.getElementById('view-title').textContent = btn.dataset.name || btn.dataset.ip;
+  document.getElementById('view-username').value = btn.dataset.username || '';
+  document.getElementById('view-password').value = btn.dataset.password || '';
+  document.getElementById('view-img').classList.add('d-none');
+  document.getElementById('view-error').classList.add('d-none');
+  document.getElementById('view-placeholder').classList.remove('d-none');
+  document.getElementById('view-rtsp').textContent =
+    `rtsp://${btn.dataset.username || 'user'}:****@${btn.dataset.ip}:554/stream1`;
+  new bootstrap.Modal(document.getElementById('viewModal')).show();
+}
+
+function loadSnapshot() {
+  const u = encodeURIComponent(document.getElementById('view-username').value);
+  const p = encodeURIComponent(document.getElementById('view-password').value);
+  const url = `/api/cameras/${_viewCameraId}/snapshot?username=${u}&password=${p}&t=${Date.now()}`;
+  document.getElementById('view-placeholder').classList.add('d-none');
+  document.getElementById('view-error').classList.add('d-none');
+  const img = document.getElementById('view-img');
+  img.classList.add('d-none');
+  img.onload = () => img.classList.remove('d-none');
+  img.onerror = () => {
+    document.getElementById('view-error-msg').textContent =
+      'Não foi possível carregar a imagem. A câmera pode não suportar snapshot HTTP ou as credenciais estão incorretas.';
+    document.getElementById('view-error').classList.remove('d-none');
+  };
+  img.src = url;
+}
+
+function stopView() {
+  document.getElementById('view-img').src = '';
 }
 
 function openDeleteModal(id, name) {

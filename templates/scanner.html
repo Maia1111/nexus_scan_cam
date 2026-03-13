@@ -54,6 +54,31 @@
 
 {% endblock %}
 
+<!-- Modal Salvar com Nome -->
+<div class="modal fade" id="saveModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-floppy"></i> Salvar Câmera</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-secondary small mb-2">IP: <code id="save-ip-display"></code></p>
+        <label class="form-label text-secondary small">Nome da câmera</label>
+        <input type="text" id="save-name-input" class="form-control" placeholder="Ex: Câmera Entrada">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success btn-sm" onclick="confirmSave()">
+          <i class="bi bi-check-lg"></i> Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
 {% block scripts %}
 <script>
 const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
@@ -189,7 +214,23 @@ function addResultCard(data) {
   document.getElementById('scan-results').prepend(col);
 }
 
-async function saveCamera(btn, ip, brand, ports, score, mac) {
+let _saveData = null;
+
+function saveCamera(btn, ip, brand, ports, score, mac) {
+  _saveData = { btn, ip, brand, ports, score, mac };
+  document.getElementById('save-ip-display').textContent = ip;
+  document.getElementById('save-name-input').value = brand !== 'Desconhecida' ? `Câmera ${brand}` : '';
+  new bootstrap.Modal(document.getElementById('saveModal')).show();
+  setTimeout(() => document.getElementById('save-name-input').focus(), 300);
+}
+
+async function confirmSave() {
+  if (!_saveData) return;
+  const { btn, ip, brand, ports, score, mac } = _saveData;
+  const name = document.getElementById('save-name-input').value.trim();
+
+  bootstrap.Modal.getInstance(document.getElementById('saveModal')).hide();
+
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
 
@@ -199,10 +240,12 @@ async function saveCamera(btn, ip, brand, ports, score, mac) {
   fd.append('open_ports_csv', ports);
   fd.append('score', score);
   fd.append('mac_address', mac);
+  fd.append('name', name);
 
   const resp = await fetch('/api/cameras/save-from-scan', { method: 'POST', body: fd });
   const html = await resp.text();
   document.getElementById('save-' + ip.replace(/\./g, '-')).innerHTML = html;
+  _saveData = null;
 }
 </script>
 {% endblock %}

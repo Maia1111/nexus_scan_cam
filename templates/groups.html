@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-collection"></i> Grupos de Câmeras</h5>
+  <div class="d-flex gap-2">
+    {% if is_admin %}
+    <button class="btn btn-success btn-sm" onclick="openNewGroup()">
+      <i class="bi bi-plus-lg"></i> Novo Grupo
+    </button>
+    {% endif %}
+    <button class="btn btn-outline-secondary btn-sm"
+            hx-get="/partials/groups" hx-target="#groups-list">
+      <i class="bi bi-arrow-clockwise"></i> Atualizar
+    </button>
+  </div>
+</div>
+
+<div id="groups-list"
+     hx-get="/partials/groups"
+     hx-trigger="load">
+  <div class="text-center p-5 text-secondary">
+    <div class="spinner-border spinner-border-sm me-2"></div> Carregando...
+  </div>
+</div>
+
+<!-- Modal Novo/Editar Grupo -->
+<div class="modal fade" id="groupModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="groupModalTitle">Novo Grupo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="group-error" class="d-none"></div>
+        <form id="group-form">
+          <div class="mb-3">
+            <label class="form-label text-secondary">Nome do Grupo <span class="text-danger">*</span></label>
+            <input type="text" name="name" id="g_name" class="form-control" placeholder="Ex: Câmeras da Guarda" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">Descrição</label>
+            <input type="text" name="description" id="g_desc" class="form-control" placeholder="Descrição opcional">
+          </div>
+          <div class="row">
+            <div class="col mb-3">
+              <label class="form-label text-secondary">
+                <i class="bi bi-geo-alt"></i> Latitude
+              </label>
+              <input type="number" step="any" name="latitude" id="g_lat" class="form-control" placeholder="-23.5505">
+            </div>
+            <div class="col mb-3">
+              <label class="form-label text-secondary">
+                <i class="bi bi-geo-alt"></i> Longitude
+              </label>
+              <input type="number" step="any" name="longitude" id="g_lon" class="form-control" placeholder="-46.6333">
+            </div>
+          </div>
+          <small class="text-secondary">
+            <i class="bi bi-info-circle"></i>
+            A latitude e longitude definem a localização geográfica do grupo no mapa.
+          </small>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="submitGroup()">
+          <i class="bi bi-save"></i> Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Adicionar Câmera ao Grupo -->
+<div class="modal fade" id="addCamModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-camera-video-fill"></i> Adicionar Câmera</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label text-secondary">Selecionar câmera</label>
+        <select id="addcam-select" class="form-select">
+          <option value="">— Escolha uma câmera —</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="confirmAddCamera()">
+          <i class="bi bi-plus-lg"></i> Adicionar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmar exclusão de grupo -->
+<div class="modal fade" id="delGroupModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header border-danger">
+        <h5 class="modal-title text-danger"><i class="bi bi-trash"></i> Remover Grupo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Remover grupo <strong id="del-group-name"></strong>?</p>
+        <small class="text-secondary">As câmeras do grupo não serão deletadas.</small>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger btn-sm" id="del-group-confirm-btn">
+          <i class="bi bi-trash"></i> Remover
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let _editingGroupId = null;
+let _addCamGroupId = null;
+
+function openNewGroup() {
+  _editingGroupId = null;
+  document.getElementById('groupModalTitle').textContent = 'Novo Grupo';
+  document.getElementById('group-form').reset();
+  document.getElementById('group-error').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('groupModal')).show();
+}
+
+function openEditGroup(btn) {
+  _editingGroupId = btn.dataset.id;
+  document.getElementById('groupModalTitle').textContent = 'Editar Grupo';
+  document.getElementById('g_name').value   = btn.dataset.name        || '';
+  document.getElementById('g_desc').value   = btn.dataset.description || '';
+  document.getElementById('g_lat').value    = btn.dataset.latitude    || '';
+  document.getElementById('g_lon').value    = btn.dataset.longitude   || '';
+  document.getElementById('group-error').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('groupModal')).show();
+}
+
+async function submitGroup() {
+  const errDiv = document.getElementById('group-error');
+  const fd = new FormData(document.getElementById('group-form'));
+  const url = _editingGroupId ? `/api/groups/${_editingGroupId}/edit` : '/api/groups';
+  const resp = await fetch(url, { method: 'POST', body: fd });
+  const html = await resp.text();
+  if (!resp.ok) {
+    errDiv.innerHTML = html;
+    errDiv.classList.remove('d-none');
+    return;
+  }
+  document.getElementById('groups-list').innerHTML = html;
+  bootstrap.Modal.getInstance(document.getElementById('groupModal')).hide();
+}
+
+function openAddCamera(groupId, availableCams) {
+  _addCamGroupId = groupId;
+  const sel = document.getElementById('addcam-select');
+  sel.innerHTML = '<option value="">— Escolha —</option>';
+  availableCams.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = `${c.name || c.ip} (${c.ip})`;
+    sel.appendChild(opt);
+  });
+  new bootstrap.Modal(document.getElementById('addCamModal')).show();
+}
+
+async function confirmAddCamera() {
+  const camId = document.getElementById('addcam-select').value;
+  if (!camId) return;
+  const fd = new FormData();
+  fd.append('camera_id', camId);
+  const resp = await fetch(`/api/groups/${_addCamGroupId}/add-camera`, { method: 'POST', body: fd });
+  const html = await resp.text();
+  document.getElementById('groups-list').innerHTML = html;
+  bootstrap.Modal.getInstance(document.getElementById('addCamModal')).hide();
+}
+
+async function removeCameraFromGroup(groupId, cameraId) {
+  const resp = await fetch(`/api/groups/${groupId}/remove-camera/${cameraId}`, { method: 'POST' });
+  const html = await resp.text();
+  document.getElementById('groups-list').innerHTML = html;
+}
+
+function openDeleteGroup(id, name) {
+  document.getElementById('del-group-name').textContent = name;
+  const btn = document.getElementById('del-group-confirm-btn');
+  btn.onclick = async () => {
+    const resp = await fetch(`/api/groups/${id}/delete`, { method: 'POST' });
+    const html = await resp.text();
+    document.getElementById('groups-list').innerHTML = html;
+    bootstrap.Modal.getInstance(document.getElementById('delGroupModal')).hide();
+  };
+  new bootstrap.Modal(document.getElementById('delGroupModal')).show();
+}
+</script>
+{% endblock %}

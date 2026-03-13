@@ -65,6 +65,9 @@ class User(BaseModel):
 class CameraGroup(BaseModel):
     id = AutoField()
     name = CharField(unique=True, index=True)
+    description = CharField(default="")
+    latitude = FloatField(null=True)
+    longitude = FloatField(null=True)
     created_at = DateTimeField(default=datetime.utcnow)
 
 
@@ -144,6 +147,14 @@ def ensure_schema_migrations() -> None:
 
     if "password" not in camera_columns:
         database.execute_sql("ALTER TABLE camera ADD COLUMN password VARCHAR(255)")
+
+    group_columns = _table_columns("cameragroup")
+    if "description" not in group_columns:
+        database.execute_sql("ALTER TABLE cameragroup ADD COLUMN description VARCHAR(255) NOT NULL DEFAULT ''")
+    if "latitude" not in group_columns:
+        database.execute_sql("ALTER TABLE cameragroup ADD COLUMN latitude REAL")
+    if "longitude" not in group_columns:
+        database.execute_sql("ALTER TABLE cameragroup ADD COLUMN longitude REAL")
 
 
 def ensure_default_camera_group() -> CameraGroup:

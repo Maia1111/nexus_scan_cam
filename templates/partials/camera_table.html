@@ -11,7 +11,7 @@
         <th>Grupo</th>
         <th>Local</th>
         <th>Latência</th>
-        {% if is_admin %}<th style="width:100px">Ações</th>{% endif %}
+        <th style="width:130px">Ações</th>
       </tr>
     </thead>
     <tbody>
@@ -35,8 +35,19 @@
           <span class="text-info">{{ "%.0f"|format(cam.latency_ms) }}ms</span>
           {% else %}—{% endif %}
         </td>
-        {% if is_admin %}
         <td>
+          <!-- Ver câmera -->
+          <button class="btn btn-sm btn-outline-info me-1"
+                  data-id="{{ cam.id }}"
+                  data-ip="{{ cam.ip_address }}"
+                  data-name="{{ cam.name or cam.ip_address | e }}"
+                  data-username="{{ cam.username or '' | e }}"
+                  data-password="{{ cam.password or '' | e }}"
+                  onclick="openViewModal(this)" title="Ver câmera">
+            <i class="bi bi-eye"></i>
+          </button>
+          {% if is_admin %}
+          <!-- Editar -->
           <button class="btn btn-sm btn-outline-primary me-1"
                   data-id="{{ cam.id }}"
                   data-name="{{ cam.name | e }}"
@@ -48,20 +59,21 @@
                   onclick="openEditForm(this)" title="Editar">
             <i class="bi bi-pencil"></i>
           </button>
+          <!-- Deletar -->
           <button class="btn btn-sm btn-outline-danger"
                   onclick="openDeleteModal({{ cam.id }}, '{{ cam.name or cam.ip_address | e }}')"
                   title="Remover">
             <i class="bi bi-trash"></i>
           </button>
+          {% endif %}
         </td>
-        {% endif %}
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 <div class="text-secondary small mt-2 px-1">
-  {{ cameras | length }} câmera(s) encontrada(s)
+  {{ cameras | length }} câmera(s)
 </div>
 {% else %}
 <div class="text-center py-5 text-secondary">
