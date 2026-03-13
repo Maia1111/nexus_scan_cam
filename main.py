@@ -282,17 +282,27 @@ async def delete_camera(request: Request, camera_id: int):
 
 # ── Scanner ───────────────────────────────────────────────────────────────────
 @app.get("/scanner", response_class=HTMLResponse)
-async def scanner_page(request: Request):
+async def page_scanner(request: Request):
     user = get_user(request)
     if not user:
         return RedirectResponse("/login")
+    
+    networks = NetworkScanner.get_all_networks()
+    default_net = networks[0] if networks else "192.168.1.0/24"
+    
     return templates.TemplateResponse("scanner.html", {
         "request": request,
         "user": user,
         "is_admin": user.role == "ADMIN",
-        "default_network": NetworkScanner.get_local_network(),
+        "default_network": default_net,
+        "detected_networks": networks,
         "scan_running": _scan_running,
     })
+
+
+@app.get("/api/scan/networks")
+async def api_get_networks():
+    return {"networks": NetworkScanner.get_all_networks()}
 
 
 @app.post("/api/scan/start")

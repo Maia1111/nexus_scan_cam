@@ -111,17 +111,52 @@ class NetworkScanner:
         self.on_result = on_result
 
     @staticmethod
-    def get_local_network() -> str:
-        """Detecta automaticamente a rede local e retorna o CIDR (ex: 192.168.1.0/24)."""
+    def get_all_networks() -> list[str]:
+        """Detecta todas as redes IPv4 ativas em todas as interfaces de rede."""
+        networks = set()
+        
+        # Tenta usar o comando 'ip' no Linux (mais preciso para CIDR)
+        if os.name != "nt":
+            try:
+                import subprocess
+                output = subprocess.check_output(["ip", "-4", "addr", "show"], text=True)
+                # Procura por padrões como 'inet 192.168.1.5/24'
+                matches = re.findall(r"inet\s+(\d+\.\d+\.\d+\.\d+/\d+)", output)
+                for match in matches:
+                    # Ignora loopback
+                    if not match.startswith("127."):
+                        try:
+                            net = ipaddress.ip_network(match, strict=False)
+                            networks.add(str(net))
+                        except ValueError:
+                            continue
+            except Exception:
+                pass
+
+        # Fallback usando sockets (funciona em Windows/Linux)
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            local_ip = s.getsockname()[0]
-            s.close()
-            parts = local_ip.split(".")
-            return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+            # Obtém todas as interfaces através do hostname
+            hostname = socket.gethostname()
+            for info in socket.getaddrinfo(hostname, None, socket.AF_INET):
+                ip = info[4][0]
+                if not ip.startswith("127."):
+                    # Assume /24 como padrão quando não temos o CIDR exato no fallback
+                    parts = ip.split(".")
+                    networks.add(f"{parts[0]}.{parts[1]}.{parts[2]}.0/24")
         except Exception:
-            return "192.168.1.0/24"
+            pass
+
+        # Se nada for encontrado, retorna o padrão
+        if not networks:
+            return ["192.168.1.0/24"]
+            
+        return sorted(list(networks))
+
+    @staticmethod
+    def get_local_network() -> str:
+        """Retorna a rede principal detectada."""
+        all_nets = NetworkScanner.get_all_networks()
+        return all_nets[0] if all_nets else "192.168.1.0/24"
 
     @staticmethod
     def _build_ws_discovery_probe() -> bytes:
