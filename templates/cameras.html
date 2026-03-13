@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-camera-video"></i> Câmeras Cadastradas</h5>
+  <div class="d-flex gap-2">
+    {% if is_admin %}
+    <button class="btn btn-success btn-sm" onclick="openNewForm()">
+      <i class="bi bi-plus-lg"></i> Nova Câmera
+    </button>
+    {% endif %}
+    <button class="btn btn-outline-secondary btn-sm"
+            hx-get="/partials/cameras"
+            hx-target="#camera-list"
+            hx-include="#filter-form">
+      <i class="bi bi-arrow-clockwise"></i> Atualizar
+    </button>
+  </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3 p-3">
+  <form id="filter-form" class="row g-2 align-items-center">
+    <div class="col-auto">
+      <select name="filter" class="form-select form-select-sm"
+              hx-get="/partials/cameras" hx-target="#camera-list" hx-trigger="change" hx-include="#filter-form">
+        <option value="all">Todas</option>
+        <option value="online">Online</option>
+        <option value="offline">Offline</option>
+      </select>
+    </div>
+    <div class="col">
+      <input type="text" name="search" class="form-control form-control-sm"
+             placeholder="Buscar por IP, marca ou nome..."
+             hx-get="/partials/cameras" hx-target="#camera-list"
+             hx-trigger="keyup changed delay:400ms" hx-include="#filter-form">
+    </div>
+  </form>
+</div>
+
+<!-- Tabela (carregada via HTMX) -->
+<div id="camera-list"
+     hx-get="/partials/cameras"
+     hx-trigger="load"
+     hx-include="#filter-form">
+  <div class="text-center p-5 text-secondary">
+    <div class="spinner-border spinner-border-sm me-2"></div> Carregando...
+  </div>
+</div>
+
+<!-- Modal Nova/Editar Câmera -->
+<div class="modal fade" id="cameraModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalTitle">Nova Câmera</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="form-error" class="d-none"></div>
+        <form id="camera-form">
+          <div class="mb-3">
+            <label class="form-label text-secondary">Nome</label>
+            <input type="text" name="name" id="f_name" class="form-control" placeholder="Ex: Câmera Entrada">
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">Endereço IP <span class="text-danger">*</span></label>
+            <input type="text" name="ip_address" id="f_ip" class="form-control" placeholder="192.168.1.100" required>
+          </div>
+          <div class="row">
+            <div class="col mb-3">
+              <label class="form-label text-secondary">Usuário</label>
+              <input type="text" name="username" id="f_user" class="form-control" placeholder="admin">
+            </div>
+            <div class="col mb-3">
+              <label class="form-label text-secondary">Senha</label>
+              <input type="password" name="password" id="f_pass" class="form-control">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">Marca</label>
+            <input type="text" name="brand" id="f_brand" class="form-control" placeholder="Hikvision, Intelbras...">
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">Localização</label>
+            <input type="text" name="location" id="f_location" class="form-control" placeholder="Ex: Portaria">
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">Grupo</label>
+            <select name="group_id" id="f_group" class="form-select">
+              <option value="">Sem grupo</option>
+              {% for g in groups %}
+              <option value="{{ g.id }}">{{ g.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" onclick="submitForm()">
+          <i class="bi bi-save"></i> Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmação de Exclusão -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header border-danger">
+        <h5 class="modal-title text-danger"><i class="bi bi-trash"></i> Remover Câmera</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Remover <strong id="delete-name"></strong>?</p>
+        <small class="text-secondary">Esta ação não pode ser desfeita.</small>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger btn-sm" id="confirm-delete-btn">
+          <i class="bi bi-trash"></i> Remover
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let editingId = null;
+
+function openNewForm() {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = 'Nova Câmera';
+  document.getElementById('camera-form').reset();
+  document.getElementById('form-error').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('cameraModal')).show();
+}
+
+function openEditForm(btn) {
+  editingId = btn.dataset.id;
+  document.getElementById('modalTitle').textContent = 'Editar Câmera';
+  document.getElementById('f_name').value     = btn.dataset.name     || '';
+  document.getElementById('f_ip').value       = btn.dataset.ip       || '';
+  document.getElementById('f_user').value     = btn.dataset.username || '';
+  document.getElementById('f_pass').value     = '';
+  document.getElementById('f_brand').value    = btn.dataset.brand    || '';
+  document.getElementById('f_location').value = btn.dataset.location || '';
+  document.getElementById('f_group').value    = btn.dataset.group    || '';
+  document.getElementById('form-error').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('cameraModal')).show();
+}
+
+async function submitForm() {
+  const form = document.getElementById('camera-form');
+  const errDiv = document.getElementById('form-error');
+  const data = new FormData(form);
+
+  const url = editingId ? `/api/cameras/${editingId}/edit` : '/api/cameras';
+  const resp = await fetch(url, { method: 'POST', body: data });
+  const html = await resp.text();
+
+  if (!resp.ok) {
+    errDiv.innerHTML = html;
+    errDiv.classList.remove('d-none');
+    return;
+  }
+
+  document.getElementById('camera-list').innerHTML = html;
+  bootstrap.Modal.getInstance(document.getElementById('cameraModal')).hide();
+}
+
+function openDeleteModal(id, name) {
+  document.getElementById('delete-name').textContent = name || `#${id}`;
+  const btn = document.getElementById('confirm-delete-btn');
+  btn.onclick = async () => {
+    const resp = await fetch(`/api/cameras/${id}/delete`, { method: 'POST' });
+    const html = await resp.text();
+    document.getElementById('camera-list').innerHTML = html;
+    bootstrap.Modal.getInstance(document.getElementById('deleteModal')).hide();
+  };
+  new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+</script>
+{% endblock %}

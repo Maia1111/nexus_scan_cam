@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="mb-0"><i class="bi bi-radar"></i> Scanner de Rede</h5>
+  <small class="text-secondary">Descoberta automática de câmeras IP</small>
+</div>
+
+<!-- Controles -->
+<div class="card p-3 mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col">
+      <label class="form-label text-secondary mb-1">Rede (CIDR)</label>
+      <input type="text" id="network-input" class="form-control"
+             value="{{ default_network }}" placeholder="192.168.1.0/24">
+    </div>
+    <div class="col-auto d-flex gap-2">
+      <button id="start-btn" class="btn btn-primary" onclick="startScan()">
+        <i class="bi bi-play-fill"></i> Iniciar Varredura
+      </button>
+      <button id="stop-btn" class="btn btn-danger d-none" onclick="stopScan()">
+        <i class="bi bi-stop-fill"></i> Parar
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Progresso -->
+<div id="progress-section" class="d-none mb-3">
+  <div class="card p-3">
+    <div class="d-flex justify-content-between mb-2">
+      <span id="progress-text" class="small text-secondary">Inicializando...</span>
+      <span id="progress-count" class="small text-secondary fw-bold">0 / 0</span>
+    </div>
+    <div class="progress" style="height: 8px;">
+      <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+           style="width: 0%; transition: width .3s ease;"></div>
+    </div>
+    <div class="d-flex justify-content-between mt-2">
+      <small class="text-secondary">
+        <i class="bi bi-camera-video text-success"></i>
+        <span id="found-count">0</span> câmera(s) encontrada(s)
+      </small>
+      <small id="scan-status" class="text-secondary">Em andamento...</small>
+    </div>
+  </div>
+</div>
+
+<!-- Resultados -->
+<div id="results-header" class="d-none mb-2">
+  <h6 class="text-secondary"><i class="bi bi-list-check"></i> Resultados</h6>
+</div>
+<div id="scan-results" class="row g-3"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+let eventSource = null;
+let foundCount = 0;
+
+async function startScan() {
+  const network = document.getElementById('network-input').value.trim();
+  if (!network) return;
+
+  // Reset UI
+  foundCount = 0;
+  document.getElementById('scan-results').innerHTML = '';
+  document.getElementById('found-count').textContent = '0';
+  document.getElementById('progress-bar').style.width = '0%';
+  document.getElementById('progress-bar').classList.add('progress-bar-animated');
+  document.getElementById('progress-text').textContent = 'Inicializando varredura...';
+  document.getElementById('progress-count').textContent = '0 / 0';
+  document.getElementById('scan-status').textContent = 'Em andamento...';
+  document.getElementById('progress-section').classList.remove('d-none');
+  document.getElementById('results-header').classList.remove('d-none');
+  document.getElementById('start-btn').classList.add('d-none');
+  document.getElementById('stop-btn').classList.remove('d-none');
+
+  // Start scan on server
+  const fd = new FormData();
+  fd.append('network', network);
+  const resp = await fetch('/api/scan/start', { method: 'POST', body: fd });
+  const result = await resp.json();
+
+  if (result.status === 'already_running') {
+    // Just connect to existing stream
+  }
+
+  // Connect SSE
+  if (eventSource) eventSource.close();
+  eventSource = new EventSource('/api/scan/events');
+
+  eventSource.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+
+    if (data.type === 'progress') {
+      const pct = data.total > 0 ? Math.round((data.done / data.total) * 100) : 0;
+      document.getElementById('progress-bar').style.width = pct + '%';
+      document.getElementById('progress-count').textContent = `${data.done} / ${data.total}`;
+      document.getElementById('progress-text').textContent = `Escaneando rede...`;
+    }
+
+    if (data.type === 'found') {
+      foundCount++;
+      document.getElementById('found-count').textContent = foundCount;
+      addResultCard(data);
+    }
+
+    if (data.type === 'done') {
+      eventSource.close();
+      scanFinished(null);
+    }
+
+    if (data.type === 'error') {
+      eventSource.close();
+      scanFinished(data.message);
+    }
+  };
+
+  eventSource.onerror = () => {
+    eventSource.close();
+    scanFinished('Conexão com o servidor perdida');
+  };
+}
+
+async function stopScan() {
+  await fetch('/api/scan/stop', { method: 'POST' });
+  if (eventSource) eventSource.close();
+  scanFinished(null);
+}
+
+function scanFinished(error) {
+  document.getElementById('start-btn').classList.remove('d-none');
+  document.getElementById('stop-btn').classList.add('d-none');
+  document.getElementById('progress-bar').classList.remove('progress-bar-animated');
+  document.getElementById('progress-bar').style.width = '100%';
+
+  if (error) {
+    document.getElementById('scan-status').textContent = 'Erro: ' + error;
+    document.getElementById('progress-bar').classList.add('bg-danger');
+    document.getElementById('progress-bar').classList.remove('bg-primary');
+  } else {
+    document.getElementById('scan-status').textContent = `Concluído — ${foundCount} câmera(s)`;
+    document.getElementById('progress-bar').classList.add('bg-success');
+    document.getElementById('progress-bar').classList.remove('bg-primary');
+    document.getElementById('progress-text').textContent = 'Varredura concluída';
+  }
+}
+
+function scoreColor(score) {
+  if (score >= 80) return 'success';
+  if (score >= 50) return 'warning';
+  if (score >= 20) return 'info';
+  return 'secondary';
+}
+
+function addResultCard(data) {
+  const ports = (data.ports || []).join(', ') || '—';
+  const sc = scoreColor(data.score);
+  const cardId = 'card-' + data.ip.replace(/\./g, '-');
+  const saveId = 'save-' + data.ip.replace(/\./g, '-');
+
+  const col = document.createElement('div');
+  col.className = 'col-12 col-md-6 col-lg-4 col-xl-3';
+  col.id = cardId;
+
+  const saveBtn = IS_ADMIN
+    ? `<button class="btn btn-sm btn-success w-100" onclick="saveCamera(this,'${data.ip}','${data.brand}','${ports}',${data.score},'${data.mac || ''}')">
+         <i class="bi bi-floppy"></i> Salvar Câmera
+       </button>`
+    : `<span class="badge bg-secondary w-100 py-2">Somente ADMIN</span>`;
+
+  col.innerHTML = `
+    <div class="card h-100">
+      <div class="card-body pb-2">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <h6 class="mb-0"><code>${data.ip}</code></h6>
+          <span class="badge bg-${sc} ms-2">${data.score}pts</span>
+        </div>
+        <p class="small text-secondary mb-1"><i class="bi bi-building"></i> ${data.brand}</p>
+        ${data.mac ? `<p class="small text-secondary mb-1"><i class="bi bi-ethernet"></i> <code class="small">${data.mac}</code></p>` : ''}
+        <p class="small mb-3"><i class="bi bi-plug"></i> <span class="text-info">${ports}</span></p>
+        <div id="${saveId}">${saveBtn}</div>
+      </div>
+    </div>`;
+
+  document.getElementById('scan-results').prepend(col);
+}
+
+async function saveCamera(btn, ip, brand, ports, score, mac) {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+  const fd = new FormData();
+  fd.append('ip_address', ip);
+  fd.append('brand', brand);
+  fd.append('open_ports_csv', ports);
+  fd.append('score', score);
+  fd.append('mac_address', mac);
+
+  const resp = await fetch('/api/cameras/save-from-scan', { method: 'POST', body: fd });
+  const html = await resp.text();
+  document.getElementById('save-' + ip.replace(/\./g, '-')).innerHTML = html;
+}
+</script>
+{% endblock %}
