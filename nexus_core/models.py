@@ -139,6 +139,23 @@ def ensure_schema_migrations() -> None:
         database.execute_sql("ALTER TABLE cameragroup ADD COLUMN longitude REAL")
 
 
+def restore_database(backup_bytes: bytes) -> None:
+    """Substitui o banco atual pelo arquivo de backup fornecido."""
+    import shutil
+
+    if not backup_bytes.startswith(b"SQLite format 3\x00"):
+        raise ValueError("Arquivo não é um banco SQLite válido.")
+
+    tmp = Path(str(DB_PATH) + ".restore_tmp")
+    tmp.write_bytes(backup_bytes)
+
+    if not database.is_closed():
+        database.close()
+
+    shutil.move(str(tmp), str(DB_PATH))
+    initialize_database()
+
+
 def has_any_user() -> bool:
     initialize_database()
     return User.select().exists()

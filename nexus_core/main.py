@@ -10,11 +10,12 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
+import sqlite3
 import httpx
 import uvicorn
 import io
 from xhtml2pdf import pisa
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -22,11 +23,13 @@ from starlette.middleware.sessions import SessionMiddleware
 from models import (
     Camera,
     CameraGroup,
+    DB_PATH,
     User,
     create_user,
     ensure_default_camera_group,
     has_any_user,
     initialize_database,
+    restore_database,
     verify_password,
 )
 from scanner import CameraMonitor, NetworkScanner
@@ -1032,6 +1035,68 @@ async def admin_toggle_user(request: Request, user_id: int):
         target.save()
     
     return await admin_users_partial(request)
+
+
+# ── Backup / Restore ──────────────────────────────────────────────────────────
+@app.get("/admin/backup", response_class=HTMLResponse)
+async def backup_page(request: Request):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("admin_backup.html", {
+        "request": request,
+        "user": user,
+        "is_admin": True,
+    })
+
+
+@app.get("/api/backup")
+async def download_backup(request: Request):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        raise HTTPException(status_code=403)
+
+    tmp_path = str(DB_PATH) + ".backup_tmp"
+    try:
+        src = sqlite3.connect(str(DB_PATH))
+        dst = sqlite3.connect(tmp_path)
+        src.backup(dst)
+        dst.close()
+        src.close()
+        data = DB_PATH.parent.joinpath(DB_PATH.name + ".backup_tmp").read_bytes()
+    finally:
+        import os
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    filename = f"nexus_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db"
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/restore", response_class=HTMLResponse)
+async def restore_backup(request: Request, file: UploadFile = File(...)):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("<div class='alert alert-danger'>Sem permissão</div>", status_code=403)
+
+    data = await file.read()
+    try:
+        restore_database(data)
+    except ValueError as e:
+        return HTMLResponse(f"<div class='alert alert-danger'><b>Arquivo inválido:</b> {e}</div>")
+    except Exception as e:
+        return HTMLResponse(f"<div class='alert alert-danger'><b>Erro ao restaurar:</b> {e}</div>")
+
+    return HTMLResponse(
+        "<div class='alert alert-success'>"
+        "<b>Banco restaurado com sucesso!</b> "
+        "<a href='/cameras' class='alert-link'>Ir para Câmeras</a>"
+        "</div>"
+    )
 
 
 # ── Entrypoint ────────────────────────────────────────────────────────────────
