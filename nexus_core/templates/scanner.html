@@ -58,7 +58,23 @@
 <div id="results-header" class="d-none mb-2">
   <h6 class="text-secondary"><i class="bi bi-list-check"></i> Resultados</h6>
 </div>
-<div id="scan-results" class="row g-3"></div>
+<div id="scan-results-wrapper" class="d-none">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>IP</th>
+          <th>Marca</th>
+          <th>MAC</th>
+          <th>Portas</th>
+          <th>Score</th>
+          <th class="text-center">Ação</th>
+        </tr>
+      </thead>
+      <tbody id="scan-results"></tbody>
+    </table>
+  </div>
+</div>
 
 <!-- Modal Salvar com Nome -->
 <div class="modal fade" id="saveModal" tabindex="-1">
@@ -83,11 +99,24 @@
   </div>
 </div>
 
+<!-- Toast de sucesso -->
+<div class="position-fixed top-0 start-50 translate-middle-x pt-3" style="z-index: 9999">
+  <div id="saveToast" class="toast align-items-center text-bg-success border-0" role="alert" data-bs-delay="3000">
+    <div class="d-flex">
+      <div class="toast-body">
+        <i class="bi bi-check-circle-fill me-2"></i> <span id="saveToastMsg">Câmera salva com sucesso!</span>
+      </div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
 const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+const SAVED_IPS = new Set({{ saved_ips | tojson | safe }});
 let eventSource = null;
 let foundCount = 0;
 
@@ -98,6 +127,7 @@ async function startScan() {
   // Reset UI
   foundCount = 0;
   document.getElementById('scan-results').innerHTML = '';
+  document.getElementById('scan-results-wrapper').classList.add('d-none');
   document.getElementById('found-count').textContent = '0';
   document.getElementById('progress-bar').style.width = '0%';
   document.getElementById('progress-bar').classList.add('progress-bar-animated');
@@ -134,9 +164,11 @@ async function startScan() {
     }
 
     if (data.type === 'found') {
-      foundCount++;
-      document.getElementById('found-count').textContent = foundCount;
-      addResultCard(data);
+      if (!SAVED_IPS.has(data.ip)) {
+        foundCount++;
+        document.getElementById('found-count').textContent = foundCount;
+        addResultCard(data);
+      }
     }
 
     if (data.type === 'done') {
@@ -190,34 +222,26 @@ function scoreColor(score) {
 function addResultCard(data) {
   const ports = (data.ports || []).join(', ') || '—';
   const sc = scoreColor(data.score);
-  const cardId = 'card-' + data.ip.replace(/\./g, '-');
   const saveId = 'save-' + data.ip.replace(/\./g, '-');
 
-  const col = document.createElement('div');
-  col.className = 'col-12 col-md-6 col-lg-4 col-xl-3';
-  col.id = cardId;
-
   const saveBtn = IS_ADMIN
-    ? `<button class="btn btn-sm btn-success w-100" onclick="saveCamera(this,'${data.ip}','${data.brand}','${ports}',${data.score},'${data.mac || ''}')">
-         <i class="bi bi-floppy"></i> Salvar Câmera
+    ? `<button class="btn btn-sm btn-success" onclick="saveCamera(this,'${data.ip}','${data.brand}','${ports}',${data.score},'${data.mac || ''}')">
+         <i class="bi bi-floppy"></i> Salvar
        </button>`
-    : `<span class="badge bg-secondary w-100 py-2">Somente ADMIN</span>`;
+    : `<span class="badge bg-secondary">Somente ADMIN</span>`;
 
-  col.innerHTML = `
-    <div class="card h-100">
-      <div class="card-body pb-2">
-        <div class="d-flex justify-content-between align-items-start mb-2">
-          <h6 class="mb-0"><code>${data.ip}</code></h6>
-          <span class="badge bg-${sc} ms-2">${data.score}pts</span>
-        </div>
-        <p class="small text-secondary mb-1"><i class="bi bi-building"></i> ${data.brand}</p>
-        ${data.mac ? `<p class="small text-secondary mb-1"><i class="bi bi-ethernet"></i> <code class="small">${data.mac}</code></p>` : ''}
-        <p class="small mb-3"><i class="bi bi-plug"></i> <span class="text-info">${ports}</span></p>
-        <div id="${saveId}">${saveBtn}</div>
-      </div>
-    </div>`;
+  const tr = document.createElement('tr');
+  tr.id = 'card-' + data.ip.replace(/\./g, '-');
+  tr.innerHTML = `
+    <td><code>${data.ip}</code></td>
+    <td>${data.brand}</td>
+    <td><code class="small">${data.mac || '—'}</code></td>
+    <td><span class="text-info small">${ports}</span></td>
+    <td><span class="badge bg-${sc}">${data.score} pts</span></td>
+    <td class="text-center" id="${saveId}">${saveBtn}</td>`;
 
-  document.getElementById('scan-results').prepend(col);
+  document.getElementById('scan-results').prepend(tr);
+  document.getElementById('scan-results-wrapper').classList.remove('d-none');
 }
 
 let _saveData = null;
@@ -251,7 +275,12 @@ async function confirmSave() {
   const resp = await fetch('/api/cameras/save-from-scan', { method: 'POST', body: fd });
   const html = await resp.text();
   document.getElementById('save-' + ip.replace(/\./g, '-')).innerHTML = html;
+  SAVED_IPS.add(ip);
   _saveData = null;
+
+  const toastName = name || ip;
+  document.getElementById('saveToastMsg').textContent = `Câmera "${toastName}" salva com sucesso!`;
+  bootstrap.Toast.getOrCreateInstance(document.getElementById('saveToast')).show();
 }
 </script>
 {% endblock %}

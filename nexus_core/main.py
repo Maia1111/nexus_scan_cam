@@ -294,6 +294,7 @@ async def page_scanner(request: Request):
     networks = NetworkScanner.get_all_networks()
     default_net = networks[0] if networks else "192.168.1.0/24"
     
+    saved_ips = [row[0] for row in Camera.select(Camera.ip_address).tuples()]
     return templates.TemplateResponse("scanner.html", {
         "request": request,
         "user": user,
@@ -301,6 +302,7 @@ async def page_scanner(request: Request):
         "default_network": default_net,
         "detected_networks": networks,
         "scan_running": _scan_running,
+        "saved_ips": list(saved_ips),
     })
 
 
