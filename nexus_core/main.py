@@ -221,6 +221,8 @@ async def create_camera(
     brand: str = Form("Desconhecida"),
     location: str = Form(""),
     group_id: str = Form(""),
+    is_nvr: bool = Form(False),
+    parent_id: str = Form(""),
 ):
     user = get_user(request)
     if not user or user.role != "ADMIN":
@@ -235,6 +237,8 @@ async def create_camera(
             brand=brand.strip() or "Desconhecida",
             location=location.strip() or None,
             group=group,
+            is_nvr=is_nvr,
+            parent=Camera.get_by_id(int(parent_id)) if parent_id else None,
         )
     except Exception as e:
         return HTMLResponse(f"<div class='alert alert-danger'>Erro: {e}</div>")
@@ -252,6 +256,8 @@ async def update_camera(
     brand: str = Form(""),
     location: str = Form(""),
     group_id: str = Form(""),
+    is_nvr: bool = Form(False),
+    parent_id: str = Form(""),
 ):
     user = get_user(request)
     if not user or user.role != "ADMIN":
@@ -268,6 +274,8 @@ async def update_camera(
         cam.brand = brand.strip() or "Desconhecida"
         cam.location = location.strip() or None
         cam.group = group
+        cam.is_nvr = is_nvr
+        cam.parent = Camera.get_by_id(int(parent_id)) if parent_id else None
         cam.updated_at = utcnow()
         cam.save()
     except Exception as e:
@@ -280,10 +288,15 @@ async def delete_camera(request: Request, camera_id: int):
     user = get_user(request)
     if not user or user.role != "ADMIN":
         return HTMLResponse("<div class='alert alert-danger'>Sem permissão</div>", status_code=403)
-    cam = Camera.get_or_none(Camera.id == camera_id)
-    if cam:
-        cam.delete_instance()
-    return await cameras_partial(request)
+    try:
+        cam = Camera.get_or_none(Camera.id == camera_id)
+        if cam:
+            # Primeiro remove vínculos de filhos para evitar erro de FK
+            Camera.update(parent=None).where(Camera.parent == cam).execute()
+            cam.delete_instance()
+        return await cameras_partial(request)
+    except Exception as e:
+        return HTMLResponse(f"<div class='alert alert-danger font-monospace small'>Erro ao excluir: {str(e)}</div>")
 
 
 # ── Scanner ───────────────────────────────────────────────────────────────────
@@ -339,10 +352,11 @@ async def start_scan(request: Request, network: str = Form(...)):
                 on_result=lambda r: _scan_events.append({
                     "type": "found",
                     "ip": r.ip,
-                    "mac": r.mac or "",
+                    "mac": r.mac,
                     "brand": r.brand,
                     "ports": r.open_ports,
                     "score": r.score,
+                    "is_nvr": r.is_nvr,
                 }),
             )
             ns.scan_network(network.strip(), stop_event=_scan_stop)
@@ -398,6 +412,7 @@ async def save_from_scan(
     score: int = Form(0),
     mac_address: str = Form(""),
     name: str = Form(""),
+    is_nvr: bool = Form(False),
 ):
     user = get_user(request)
     if not user or user.role != "ADMIN":
@@ -415,6 +430,7 @@ async def save_from_scan(
         is_online=True,
         last_seen_at=utcnow(),
         group=default_group,
+        is_nvr=is_nvr,
     )
     label = name.strip() or ip_address
     return HTMLResponse(f"<span class='badge bg-success'>✓ {label}</span>")
@@ -476,7 +492,22 @@ async def camera_traceroute(ip: str, request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    return {"target": ip, "hops": hops, "server_ip": server_ip}
+    # Adicionar lógica de NVR ao rastro
+    nvr_info = None
+    cam = Camera.get_or_none(Camera.ip_address == ip)
+    if cam and cam.parent:
+        nvr_info = {
+            "name": cam.parent.name or cam.parent.ip_address,
+            "ip": cam.parent.ip_address,
+            "is_online": cam.parent.is_online
+        }
+
+    return {
+        "target": ip, 
+        "hops": hops, 
+        "server_ip": server_ip,
+        "nvr_info": nvr_info
+    }
 
 
 # ── Groups ───────────────────────────────────────────────────────────────────

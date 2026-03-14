@@ -65,6 +65,8 @@ class Camera(BaseModel):
     group = ForeignKeyField(CameraGroup, null=True, backref="cameras", on_delete="SET NULL")
     open_ports_csv = CharField(default="")
     score = IntegerField(default=0)
+    is_nvr = BooleanField(default=False)
+    parent = ForeignKeyField("self", null=True, backref="sub_cameras", on_delete="SET NULL")
     is_online = BooleanField(default=False)
     latency_ms = FloatField(null=True)
     last_seen_at = DateTimeField(null=True)
@@ -129,6 +131,12 @@ def ensure_schema_migrations() -> None:
 
     if "password" not in camera_columns:
         database.execute_sql("ALTER TABLE camera ADD COLUMN password VARCHAR(255)")
+
+    if "is_nvr" not in camera_columns:
+        database.execute_sql("ALTER TABLE camera ADD COLUMN is_nvr BOOLEAN NOT NULL DEFAULT 0")
+
+    if "parent_id" not in camera_columns:
+        database.execute_sql("ALTER TABLE camera ADD COLUMN parent_id INTEGER REFERENCES camera(id) ON DELETE SET NULL")
 
     group_columns = _table_columns("cameragroup")
     if "description" not in group_columns:

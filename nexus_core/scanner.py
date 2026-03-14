@@ -93,6 +93,7 @@ class DeviceProbeResult:
     brand: str
     open_ports: list[int]
     score: int
+    is_nvr: bool = False
 
 
 class NetworkScanner:
@@ -338,8 +339,24 @@ class NetworkScanner:
         finally:
             conn.close()
 
-    def _score_device(self, open_ports: list[int], brand: str) -> int:
+    def _score_device(self, open_ports: list[int], brand: str) -> tuple[int, bool]:
         score = 0
+        is_nvr = False
+
+        # Portas típicas de NVR/DVR
+        nvr_ports = {8000, 37777, 34567, 37778}
+        open_nvr_ports = [p for p in open_ports if p in nvr_ports]
+        
+        # Se tiver mais de uma porta de gerência aberta, é muito provável que seja um gravador
+        if len(open_nvr_ports) >= 2:
+            is_nvr = True
+            score += 90
+        elif any(p in open_ports for p in (8000, 37777)):
+             # Um gravador Hikvision/Intelbras muitas vezes é identificado por uma única porta forte
+             # Mas vamos ser conservadores e checar a marca se disponível
+             if brand in ("Hikvision", "Intelbras", "Dahua"):
+                 is_nvr = True
+                 score += 85
 
         if 554 in open_ports or 8554 in open_ports:
             score += 80
@@ -352,7 +369,7 @@ class NetworkScanner:
         if brand != "Desconhecida":
             score += 10
 
-        return min(score, 100)
+        return min(score, 100), is_nvr
 
     def _probe_host(
         self,
@@ -373,7 +390,7 @@ class NetworkScanner:
                     if port in open_ports:
                         brand = hint_brand
                         break
-            score = self._score_device(open_ports, brand)
+            score, is_nvr = self._score_device(open_ports, brand)
 
             if onvif_hint:
                 score = max(score, 90)
@@ -387,6 +404,7 @@ class NetworkScanner:
                 brand=brand,
                 open_ports=open_ports,
                 score=score,
+                is_nvr=is_nvr,
             )
         except Exception:
             return None

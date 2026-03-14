@@ -24,7 +24,12 @@
           <span class="badge bg-danger"><i class="bi bi-circle"></i> Offline</span>
           {% endif %}
         </td>
-        <td>{{ cam.name or '—' }}</td>
+        <td>
+          {% if cam.is_nvr %}
+          <i class="bi bi-hdd-network text-warning" title="Gravador (NVR/DVR)"></i>
+          {% endif %}
+          {{ cam.name or '—' }}
+        </td>
         <td class="d-none d-md-table-cell"><span class="badge bg-secondary">{{ cam.brand }}</span></td>
         <td><code>{{ cam.ip_address }}</code></td>
         <td class="d-none d-md-table-cell"><small class="text-secondary">{{ cam.mac_address or '—' }}</small></td>
@@ -59,11 +64,13 @@
                   data-name="{{ cam.name | e }}"
                   data-ip="{{ cam.ip_address }}"
                   data-username="{{ cam.username or '' | e }}"
-                  data-brand="{{ cam.brand | e }}"
-                  data-location="{{ cam.location or '' | e }}"
-                  data-group="{{ cam.group_id or '' }}"
-                  onclick="openEditForm(this)" title="Editar">
-            <i class="bi bi-pencil"></i>
+                   data-brand="{{ cam.brand | e }}"
+                   data-location="{{ cam.location or '' | e }}"
+                   data-group="{{ cam.group_id or '' }}"
+                   data-is-nvr="{{ 'true' if cam.is_nvr else 'false' }}"
+                   data-parent="{{ cam.parent_id or '' }}"
+                   onclick="openEditForm(this)" title="Editar">
+             <i class="bi bi-pencil"></i>
           </button>
           <!-- Deletar -->
           <button class="btn btn-sm btn-outline-danger"

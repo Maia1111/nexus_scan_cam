@@ -94,6 +94,19 @@
               {% endfor %}
             </select>
           </div>
+          <div class="mb-3 form-check form-switch mt-3">
+            <input class="form-check-input" type="checkbox" name="is_nvr" id="f_is_nvr">
+            <label class="form-check-label" for="f_is_nvr">Este dispositivo é um Gravador (NVR/DVR)</label>
+          </div>
+          <div id="parent-container" class="mb-3">
+            <label class="form-label text-secondary">Gravador (NVR) vinculado</label>
+            <select name="parent_id" id="f_parent" class="form-select">
+              <option value="">Nenhum (Conexão Direta)</option>
+              {% for c in cameras if c.is_nvr %}
+              <option value="{{ c.id }}">{{ c.name or c.ip_address }}</option>
+              {% endfor %}
+            </select>
+          </div>
         </form>
       </div>
       <div class="modal-footer">
@@ -215,8 +228,20 @@ function openEditForm(btn) {
   document.getElementById('f_brand').value    = btn.dataset.brand    || '';
   document.getElementById('f_location').value = btn.dataset.location || '';
   document.getElementById('f_group').value    = btn.dataset.group    || '';
+  document.getElementById('f_is_nvr').checked = btn.dataset.isNvr === 'true';
+  document.getElementById('f_parent').value   = btn.dataset.parent   || '';
   document.getElementById('form-error').classList.add('d-none');
   new bootstrap.Modal(document.getElementById('cameraModal')).show();
+}
+
+function openNewForm() {
+    editingId = null;
+    document.getElementById('modalTitle').textContent = 'Nova Câmera';
+    document.getElementById('camera-form').reset();
+    document.getElementById('f_is_nvr').checked = false;
+    document.getElementById('f_parent').value = '';
+    document.getElementById('form-error').classList.add('d-none');
+    new bootstrap.Modal(document.getElementById('cameraModal')).show();
 }
 
 async function submitForm() {
@@ -329,7 +354,31 @@ async function openRouteModal(ip, name) {
         </div>`;
     }
 
-    if (data.hops.length === 0) {
+    // Se houver NVR vinculado, mostramos o salto lógico
+    if (data.nvr_info) {
+        container.innerHTML += `
+        <div class="d-flex align-items-center ms-3 text-warning" style="font-size:.8rem;">
+          <i class="bi bi-link"></i> <small>vínculo lógico com gravador</small>
+        </div>
+        <div class="d-flex align-items-center gap-2 ms-0 mb-1">
+          <span class="badge bg-warning text-dark px-3 py-2">
+            <i class="bi bi-hdd-network me-1"></i> ${data.nvr_info.name}
+          </span>
+          <span class="badge bg-warning text-dark ms-2">NVR / Gravador</span>
+          <small class="text-secondary ms-2">${data.nvr_info.ip}</small>
+        </div>
+        <div class="d-flex align-items-center ms-3 text-success" style="font-size:.8rem;">
+          <i class="bi bi-arrow-down"></i> <small>canal de vídeo</small>
+        </div>
+        <div class="d-flex align-items-center gap-2 ms-0 mb-1">
+          <span class="badge bg-success px-3 py-2">
+            <i class="bi bi-camera-video-fill me-1"></i> ${name}
+          </span>
+          <span class="badge bg-success ms-2">câmera</span>
+        </div>`;
+    }
+
+    if (data.hops.length === 0 && !data.nvr_info) {
       container.innerHTML += `<div class="text-secondary mt-2">Nenhum salto encontrado. A câmera pode estar na mesma sub-rede direta.</div>`;
     }
 

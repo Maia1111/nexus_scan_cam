@@ -223,9 +223,11 @@ function addResultCard(data) {
   const ports = (data.ports || []).join(', ') || '—';
   const sc = scoreColor(data.score);
   const saveId = 'save-' + data.ip.replace(/\./g, '-');
+  
+  const nvrBadge = data.is_nvr ? `<br><span class="badge bg-warning text-dark mt-1"><i class="bi bi-hdd-network"></i> Gravador</span>` : '';
 
   const saveBtn = IS_ADMIN
-    ? `<button class="btn btn-sm btn-success" onclick="saveCamera(this,'${data.ip}','${data.brand}','${ports}',${data.score},'${data.mac || ''}')">
+    ? `<button class="btn btn-sm btn-success" onclick="saveCamera(this,'${data.ip}','${data.brand}','${ports}',${data.score},'${data.mac || ''}',${data.is_nvr})">
          <i class="bi bi-floppy"></i> Salvar
        </button>`
     : `<span class="badge bg-secondary">Somente ADMIN</span>`;
@@ -234,7 +236,7 @@ function addResultCard(data) {
   tr.id = 'card-' + data.ip.replace(/\./g, '-');
   tr.innerHTML = `
     <td><code>${data.ip}</code></td>
-    <td>${data.brand}</td>
+    <td>${data.brand}${nvrBadge}</td>
     <td><code class="small">${data.mac || '—'}</code></td>
     <td><span class="text-info small">${ports}</span></td>
     <td><span class="badge bg-${sc}">${data.score} pts</span></td>
@@ -246,8 +248,8 @@ function addResultCard(data) {
 
 let _saveData = null;
 
-function saveCamera(btn, ip, brand, ports, score, mac) {
-  _saveData = { btn, ip, brand, ports, score, mac };
+function saveCamera(btn, ip, brand, ports, score, mac, isNvr) {
+  _saveData = { btn, ip, brand, ports, score, mac, isNvr };
   document.getElementById('save-ip-display').textContent = ip;
   document.getElementById('save-name-input').value = brand !== 'Desconhecida' ? `Câmera ${brand}` : '';
   new bootstrap.Modal(document.getElementById('saveModal')).show();
@@ -256,7 +258,7 @@ function saveCamera(btn, ip, brand, ports, score, mac) {
 
 async function confirmSave() {
   if (!_saveData) return;
-  const { btn, ip, brand, ports, score, mac } = _saveData;
+  const { btn, ip, brand, ports, score, mac, isNvr } = _saveData;
   const name = document.getElementById('save-name-input').value.trim();
 
   bootstrap.Modal.getInstance(document.getElementById('saveModal')).hide();
@@ -271,6 +273,7 @@ async function confirmSave() {
   fd.append('score', score);
   fd.append('mac_address', mac);
   fd.append('name', name);
+  fd.append('is_nvr', isNvr ? 'on' : ''); // FastAPI Form boolean handling
 
   const resp = await fetch('/api/cameras/save-from-scan', { method: 'POST', body: fd });
   const html = await resp.text();
