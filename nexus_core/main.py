@@ -12,7 +12,8 @@ from typing import AsyncGenerator, Optional
 
 import httpx
 import uvicorn
-from weasyprint import HTML as WeasyHTML
+import io
+from xhtml2pdf import pisa
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -800,7 +801,7 @@ async def diagnostics_report_pdf(request: Request, group_id: Optional[int] = Non
     loop = asyncio.get_running_loop()
     pdf_bytes = await loop.run_in_executor(
         None,
-        lambda: WeasyHTML(string=html_content).write_pdf()
+        lambda: pisa.CreatePDF(io.BytesIO(html_content.encode("utf-8")), dest=io.BytesIO()).dest.getvalue()
     )
 
     filename = f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
@@ -919,7 +920,7 @@ async def diagnostics_grouped_report_pdf(request: Request):
     loop = asyncio.get_running_loop()
     pdf_bytes = await loop.run_in_executor(
         None,
-        lambda: WeasyHTML(string=html_content).write_pdf()
+        lambda: pisa.CreatePDF(io.BytesIO(html_content.encode("utf-8")), dest=io.BytesIO()).dest.getvalue()
     )
 
     filename = f"relatorio_agrupado_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
