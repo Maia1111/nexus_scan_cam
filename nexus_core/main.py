@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import socket
+import subprocess
 import time
 import threading
 import webbrowser
@@ -416,6 +418,65 @@ async def save_from_scan(
     )
     label = name.strip() or ip_address
     return HTMLResponse(f"<span class='badge bg-success'>✓ {label}</span>")
+
+
+# ── Traceroute ───────────────────────────────────────────────────────────────
+@app.get("/api/cameras/traceroute")
+async def camera_traceroute(ip: str, request: Request):
+    user = get_user(request)
+    if not user:
+        raise HTTPException(status_code=401)
+
+    # Tabela ARP para resolução de MAC
+    arp_map: dict[str, str] = {}
+    try:
+        arp_out = subprocess.run(
+            ["arp", "-a"], capture_output=True, timeout=5,
+        ).stdout.decode(errors="replace")
+        for line in arp_out.splitlines():
+            m = re.search(r"(\d+\.\d+\.\d+\.\d+)\s+([\w-]{11,17})", line)
+            if m:
+                arp_map[m.group(1)] = m.group(2).upper()
+    except Exception:
+        pass
+
+    # Identificar o IP local do servidor para marcar no traceroute
+    server_ip = ""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            server_ip = s.getsockname()[0]
+    except Exception:
+        pass
+
+    # Traceroute
+    hops = []
+    try:
+        result = subprocess.run(
+            ["tracert", "-d", "-w", "2000", "-h", "20", ip],
+            capture_output=True, timeout=90,
+        ).stdout.decode(errors="replace")
+
+        for line in result.splitlines():
+            m = re.match(r"\s*(\d+)\s+.*?(\d+\.\d+\.\d+\.\d+)\s*$", line)
+            if m:
+                hop_ip = m.group(2)
+                hops.append({
+                    "hop": int(m.group(1)),
+                    "ip": hop_ip,
+                    "mac": arp_map.get(hop_ip, ""),
+                    "timeout": False,
+                    "is_server": (hop_ip == server_ip),
+                })
+            elif re.match(r"\s*(\d+)\s+\*", line):
+                n = int(re.match(r"\s*(\d+)", line).group(1))
+                hops.append({"hop": n, "ip": "*", "mac": "", "timeout": True, "is_server": False})
+    except subprocess.TimeoutExpired:
+        pass
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"target": ip, "hops": hops, "server_ip": server_ip}
 
 
 # ── Groups ───────────────────────────────────────────────────────────────────

@@ -36,6 +36,12 @@
           {% else %}—{% endif %}
         </td>
         <td>
+          <!-- Rota na rede -->
+          <button class="btn btn-sm btn-outline-warning me-1"
+                  onclick="openRouteModal('{{ cam.ip_address }}', '{{ cam.name or cam.ip_address | e }}')"
+                  title="Ver caminho na rede">
+            <i class="bi bi-diagram-3"></i>
+          </button>
           <!-- Ver câmera -->
           <button class="btn btn-sm btn-outline-info me-1"
                   data-id="{{ cam.id }}"

@@ -170,6 +170,27 @@
   </div>
 </div>
 
+<!-- Modal Caminho na Rede -->
+<div class="modal fade" id="routeModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-diagram-3"></i> Caminho na Rede — <span id="route-title"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="route-loading" class="text-center py-4 text-secondary">
+          <div class="spinner-border spinner-border-sm me-2"></div> Rastreando rota... (pode levar alguns segundos)
+        </div>
+        <div id="route-result" class="d-none">
+          <div class="d-flex flex-column align-items-start gap-0" id="route-hops"></div>
+        </div>
+        <div id="route-error" class="d-none alert alert-danger"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -251,6 +272,73 @@ function loadSnapshot() {
 
 function stopView() {
   document.getElementById('view-img').src = '';
+}
+
+async function openRouteModal(ip, name) {
+  document.getElementById('route-title').textContent = name;
+  document.getElementById('route-loading').classList.remove('d-none');
+  document.getElementById('route-result').classList.add('d-none');
+  document.getElementById('route-error').classList.add('d-none');
+  document.getElementById('route-hops').innerHTML = '';
+  new bootstrap.Modal(document.getElementById('routeModal')).show();
+
+  try {
+    const resp = await fetch(`/api/cameras/traceroute?ip=${ip}`);
+    const data = await resp.json();
+    document.getElementById('route-loading').classList.add('d-none');
+
+    if (!resp.ok) {
+      document.getElementById('route-error').textContent = data.detail || 'Erro ao rastrear rota.';
+      document.getElementById('route-error').classList.remove('d-none');
+      return;
+    }
+
+    const container = document.getElementById('route-hops');
+
+    // Nó origem (este servidor)
+    container.innerHTML = `
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <span class="badge bg-primary px-3 py-2"><i class="bi bi-pc-display me-1"></i> Este servidor</span>
+      </div>`;
+
+    for (const h of data.hops) {
+      const isTarget = h.ip === ip;
+      const isServer = h.is_server;
+      const isTimeout = h.timeout;
+      
+      const badge = isServer ? 'bg-primary' : isTarget ? 'bg-success' : isTimeout ? 'bg-secondary' : 'bg-dark border border-secondary';
+      const icon = isServer ? 'bi-pc-display' : isTarget ? 'bi-camera-video-fill' : isTimeout ? 'bi-question-circle' : 'bi-router';
+      const label = isTimeout ? '* sem resposta' : h.ip;
+      const mac = h.mac ? `<small class="text-secondary ms-2"><i class="bi bi-ethernet"></i> ${h.mac}</small>` : '';
+      
+      let tag = '';
+      if (isServer) tag = '<span class="badge bg-primary ms-2">este servidor</span>';
+      else if (isTarget) tag = '<span class="badge bg-success ms-2">câmera</span>';
+      else if (h.hop === 1) tag = '<span class="badge bg-warning text-dark ms-2">gateway</span>';
+
+      container.innerHTML += `
+        <div class="d-flex align-items-center ms-3 text-secondary" style="font-size:.8rem;">
+          <i class="bi bi-arrow-down"></i>
+        </div>
+        <div class="d-flex align-items-center gap-2 ms-0 mb-1">
+          <span class="badge ${badge} px-3 py-2">
+            <i class="bi ${icon} me-1"></i> ${label}
+          </span>
+          ${tag}${mac}
+          <small class="text-secondary">hop ${h.hop}</small>
+        </div>`;
+    }
+
+    if (data.hops.length === 0) {
+      container.innerHTML += `<div class="text-secondary mt-2">Nenhum salto encontrado. A câmera pode estar na mesma sub-rede direta.</div>`;
+    }
+
+    document.getElementById('route-result').classList.remove('d-none');
+  } catch (e) {
+    document.getElementById('route-loading').classList.add('d-none');
+    document.getElementById('route-error').textContent = 'Erro de conexão.';
+    document.getElementById('route-error').classList.remove('d-none');
+  }
 }
 
 function openDeleteModal(id, name) {
