@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -20,23 +18,7 @@ from peewee import (
 )
 
 
-APP_NAME = "ip_camera_scanner"
-
-
-def _get_user_data_dir(app_name: str = APP_NAME) -> Path:
-    if sys.platform.startswith("win"):
-        root = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-    elif sys.platform == "darwin":
-        root = Path.home() / "Library" / "Application Support"
-    else:
-        root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-
-    app_dir = root / app_name
-    app_dir.mkdir(parents=True, exist_ok=True)
-    return app_dir
-
-
-DB_PATH = _get_user_data_dir() / "scanner.db"
+DB_PATH = Path(__file__).parent / "scanner.db"
 database = SqliteDatabase(
     DB_PATH,
     pragmas={
