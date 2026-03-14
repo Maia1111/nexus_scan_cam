@@ -141,18 +141,40 @@ def ensure_schema_migrations() -> None:
 
 def restore_database(backup_bytes: bytes) -> None:
     """Substitui o banco atual pelo arquivo de backup fornecido."""
-    import shutil
+    import sqlite3
+    import tempfile
+    import os
 
     if not backup_bytes.startswith(b"SQLite format 3\x00"):
         raise ValueError("Arquivo não é um banco SQLite válido.")
 
-    tmp = Path(str(DB_PATH) + ".restore_tmp")
-    tmp.write_bytes(backup_bytes)
+    # Verifica se o backup tem pelo menos a tabela de usuários
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".db")
+    try:
+        os.write(tmp_fd, backup_bytes)
+        os.close(tmp_fd)
 
-    if not database.is_closed():
-        database.close()
+        check = sqlite3.connect(tmp_path)
+        tables = {r[0] for r in check.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        check.close()
+        if "user" not in tables:
+            raise ValueError("Backup inválido: não contém tabela de usuários.")
 
-    shutil.move(str(tmp), str(DB_PATH))
+        # Restaura o backup no banco ativo via sqlite3 (thread-safe, sem fechar o servidor)
+        src = sqlite3.connect(tmp_path)
+        dst = sqlite3.connect(str(DB_PATH))
+        try:
+            src.backup(dst)
+            dst.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            src.close()
+            dst.close()
+
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    # Reconecta o Peewee com o banco restaurado
     initialize_database()
 
 
