@@ -213,6 +213,61 @@ async def cameras_page(request: Request):
     })
 
 
+@app.get("/cameras/report", response_class=HTMLResponse)
+async def cameras_report(request: Request):
+    user = get_user(request)
+    if not user:
+        return RedirectResponse("/login")
+    cameras = list(Camera.select().order_by(Camera.score.desc()))
+    online_count = sum(1 for c in cameras if c.is_online)
+    return templates.TemplateResponse("report.html", {
+        "request": request,
+        "title": "Inventário de Câmeras Cadastradas",
+        "generated_at": datetime.now().strftime("%d/%m/%Y às %H:%M"),
+        "generated_by": user.username,
+        "for_print": False,
+        "cameras": cameras,
+        "cameras_total": len(cameras),
+        "online_count": online_count,
+        "offline_count": len(cameras) - online_count,
+        "issues": [],
+        "network_stats": [],
+    })
+
+
+@app.get("/cameras/report/pdf")
+async def cameras_report_pdf(request: Request):
+    user = get_user(request)
+    if not user:
+        return RedirectResponse("/login")
+    cameras = list(Camera.select().order_by(Camera.score.desc()))
+    online_count = sum(1 for c in cameras if c.is_online)
+    html_content = templates.get_template("report.html").render({
+        "request": request,
+        "title": "Inventário de Câmeras Cadastradas",
+        "generated_at": datetime.now().strftime("%d/%m/%Y às %H:%M"),
+        "generated_by": user.username,
+        "for_print": True,
+        "cameras": cameras,
+        "cameras_total": len(cameras),
+        "online_count": online_count,
+        "offline_count": len(cameras) - online_count,
+        "issues": [],
+        "network_stats": [],
+    })
+    loop = asyncio.get_running_loop()
+    pdf_bytes = await loop.run_in_executor(
+        None,
+        lambda: pisa.CreatePDF(io.BytesIO(html_content.encode("utf-8")), dest=io.BytesIO()).dest.getvalue()
+    )
+    filename = f"inventario_cameras_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/partials/cameras", response_class=HTMLResponse)
 async def cameras_partial(request: Request, filter: str = "all", search: str = ""):
     user = get_user(request)
