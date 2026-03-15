@@ -15,6 +15,9 @@
           <div class="d-flex align-items-center gap-2">
             <i class="bi bi-person-circle text-secondary"></i>
             <span>{{ u.username }}</span>
+            {% if u.username == current_user.username %}
+            <small class="text-muted">(você)</small>
+            {% endif %}
           </div>
         </td>
         <td>
@@ -32,15 +35,10 @@
           {% endif %}
         </td>
         <td class="text-end">
-          {% if u.username != current_user.username %}
-          <button class="btn btn-sm btn-outline-{{ 'danger' if u.is_active else 'success' }}"
-                  hx-post="/api/admin/users/{{ u.id }}/toggle"
-                  hx-target="#user-table-container">
-            <i class="bi bi-{{ 'person-dash' if u.is_active else 'person-check' }}"></i>
+          <button class="btn btn-sm btn-outline-primary"
+                  onclick="openUserEditModal({{ u.id }}, '{{ u.username }}', '{{ u.role }}', {{ 'true' if u.is_active else 'false' }}, {{ 'true' if u.username == current_user.username else 'false' }})">
+            <i class="bi bi-pencil"></i>
           </button>
-          {% else %}
-          <small class="text-muted italic">(você)</small>
-          {% endif %}
         </td>
       </tr>
       {% endfor %}

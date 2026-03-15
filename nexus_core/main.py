@@ -1622,12 +1622,36 @@ async def admin_toggle_user(request: Request, user_id: int):
     user = get_user(request)
     if not user or user.role != "ADMIN":
         return HTMLResponse("", status_code=401)
-    
     target = User.get_or_none(User.id == user_id)
     if target and target.username != user.username:
         target.is_active = not target.is_active
         target.save()
-    
+    return await admin_users_partial(request)
+
+
+@app.post("/api/admin/users/{user_id}/edit", response_class=HTMLResponse)
+async def admin_edit_user(
+    request: Request,
+    user_id: int,
+    role: str = Form(...),
+    is_active: str = Form("on"),
+    new_password: str = Form(""),
+):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse('<div class="alert alert-danger">Sem permissão.</div>', status_code=403)
+    target = User.get_or_none(User.id == user_id)
+    if not target:
+        return HTMLResponse('<div class="alert alert-danger">Usuário não encontrado.</div>', status_code=404)
+    target.role = role.upper() if role.upper() in ("ADMIN", "VIEWER") else target.role
+    # Não permite desativar a própria conta
+    if target.username != user.username:
+        target.is_active = is_active == "on"
+    if new_password:
+        if len(new_password) < 6:
+            return HTMLResponse('<div class="alert alert-danger">A senha deve ter pelo menos 6 caracteres.</div>', status_code=400)
+        target.password_hash = hash_password(new_password)
+    target.save()
     return await admin_users_partial(request)
 
 
