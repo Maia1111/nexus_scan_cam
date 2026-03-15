@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import re
 import socket
@@ -703,6 +704,19 @@ async def remove_camera_from_group(request: Request, group_id: int, camera_id: i
 
 
 # ── Diagnostics helpers ───────────────────────────────────────────────────────
+def _get_local_ips() -> list[str]:
+    """Retorna todos os IPs IPv4 da máquina, excluindo loopback."""
+    try:
+        hostname = socket.gethostname()
+        return list({
+            info[4][0]
+            for info in socket.getaddrinfo(hostname, None, socket.AF_INET)
+            if not info[4][0].startswith("127.")
+        })
+    except Exception:
+        return []
+
+
 async def _tcp_ping_once(ip: str, port: int, timeout: float) -> float | None:
     """Tenta uma conexão TCP assíncrona e retorna a latência em ms, ou None se falhar."""
     try:
@@ -746,6 +760,40 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
         cameras = list(Camera.select().where(Camera.group_id == group_id))
     else:
         cameras = list(Camera.select())
+
+    # Verifica cobertura de interface de rede local
+    local_ips = _get_local_ips()
+    if local_ips and cameras:
+        local_subnets = set()
+        for ip in local_ips:
+            try:
+                local_subnets.add(ipaddress.ip_network(ip + "/24", strict=False))
+            except Exception:
+                pass
+
+        cam_subnets: dict[str, list] = {}
+        for cam in cameras:
+            try:
+                net = ipaddress.ip_network(cam.ip_address + "/24", strict=False)
+                cam_subnets.setdefault(str(net), []).append(cam)
+            except Exception:
+                pass
+
+        for subnet_str, cams in cam_subnets.items():
+            subnet = ipaddress.ip_network(subnet_str)
+            if not any(subnet.overlaps(local) for local in local_subnets):
+                issues.append({
+                    "severity": "warning",
+                    "icon": "ethernet",
+                    "type": "no_local_interface",
+                    "title": f"Interface não configurada para a faixa {subnet_str}",
+                    "detail": (
+                        f"{len(cams)} câmera(s) cadastrada(s) em {subnet_str}, mas este computador "
+                        f"não possui nenhum endereço IP nessa faixa. "
+                        f"IPs locais detectados: {', '.join(local_ips)}. "
+                        f"Verifique as configurações da placa de rede."
+                    ),
+                })
 
     # Verificações estáticas
     for cam in cameras:
