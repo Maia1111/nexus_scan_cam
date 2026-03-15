@@ -98,6 +98,30 @@
   </div>
 </div>
 
+<!-- Popup de sugestão centralizado -->
+<div id="diag-tip" style="
+  display:none; position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-50%) scale(.95);
+  z-index:9999; max-width:420px; width:90%;
+  pointer-events:none; opacity:0;
+  transition: opacity .22s ease, transform .22s ease;">
+  <div style="
+    background: linear-gradient(135deg, #1a2540 0%, #0f1c35 100%);
+    border: 1.5px solid #fbbf24;
+    border-radius: 16px;
+    padding: 1.25rem 1.5rem;
+    box-shadow: 0 12px 48px rgba(0,0,0,.7), 0 0 0 1px rgba(251,191,36,.15), inset 0 1px 0 rgba(255,255,255,.05);">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <i class="bi bi-exclamation-circle-fill" style="color:#fbbf24; font-size:1rem;"></i>
+      <span id="diag-tip-type" style="font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; color:#fbbf24; font-weight:600;"></span>
+    </div>
+    <div id="diag-tip-text" style="color:#dde6f5; font-size:.88rem; line-height:1.6;"></div>
+    <div class="mt-3 pt-2" style="border-top:1px solid rgba(251,191,36,.2); font-size:.72rem; color:#7a90b8;">
+      <i class="bi bi-lightbulb-fill me-1" style="color:#fbbf24;"></i>Sugestão de correção
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -174,5 +198,36 @@ function filterDiag(query) {
     }
   });
 }
+
+// ── Popup de sugestão centralizado ──────────────────────────────
+const _tip = document.getElementById('diag-tip');
+let _tipTimeout = null;
+
+function _showTip(badge) {
+  clearTimeout(_tipTimeout);
+  const suggestion = badge.dataset.suggestion;
+  if (!suggestion) return;
+  document.getElementById('diag-tip-type').textContent = badge.dataset.title || '';
+  document.getElementById('diag-tip-text').textContent = suggestion;
+  _tip.style.display = 'block';
+  requestAnimationFrame(() => {
+    _tip.style.opacity = '1';
+    _tip.style.transform = 'translate(-50%, -50%) scale(1)';
+  });
+}
+
+function _hideTip() {
+  _tip.style.opacity = '0';
+  _tip.style.transform = 'translate(-50%, -50%) scale(.95)';
+  _tipTimeout = setTimeout(() => { _tip.style.display = 'none'; }, 230);
+}
+
+document.addEventListener('mouseover', e => {
+  const badge = e.target.closest('.diag-suggest');
+  if (badge) _showTip(badge);
+});
+document.addEventListener('mouseout', e => {
+  if (e.target.closest('.diag-suggest')) _hideTip();
+});
 </script>
 {% endblock %}

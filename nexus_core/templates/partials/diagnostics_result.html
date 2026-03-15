@@ -133,8 +133,10 @@
             <td>{% if s.loss_pct > 0 %}<span class="text-warning">{{ "%.0f"|format(s.loss_pct) }}%</span>{% else %}<span class="text-success">0%</span>{% endif %}</td>
             <td>
               {% for w in s.cam_warnings %}
-              <span class="badge bg-warning text-dark me-1" style="font-size:.7rem; cursor:help;"
-                    title="{{ w.suggestion }}">{{ w.title }}</span>
+              <span class="badge bg-warning text-dark me-1 diag-suggest"
+                    style="font-size:.7rem; cursor:help;"
+                    data-title="{{ w.title }}"
+                    data-suggestion="{{ w.suggestion }}">{{ w.title }}</span>
               {% else %}
               <span class="text-secondary small">—</span>
               {% endfor %}
