@@ -54,14 +54,19 @@
   <div class="col-md-4">
     <div class="card p-3">
       <h6 class="mb-3">Novo Usuário</h6>
-      <form hx-post="/api/admin/users" hx-target="#user-table-container">
+      <div id="create-user-result"></div>
+      <form id="create-user-form">
         <div class="mb-3">
           <label class="form-label">Username</label>
-          <input type="text" name="username" class="form-control" required>
+          <input type="text" name="username" class="form-control" required autocomplete="off">
         </div>
         <div class="mb-3">
-          <label class="form-label">Senha Inicial</label>
-          <input type="password" name="password" class="form-control" required>
+          <label class="form-label">Senha</label>
+          <input type="password" name="password" class="form-control" required autocomplete="new-password">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Confirmar Senha</label>
+          <input type="password" name="confirm_password" id="create-confirm-password" class="form-control" required autocomplete="new-password">
         </div>
         <div class="mb-3">
           <label class="form-label">Permissão</label>
@@ -70,7 +75,7 @@
             <option value="ADMIN">Administrador</option>
           </select>
         </div>
-        <button type="submit" class="btn btn-primary btn-sm w-100">
+        <button type="button" class="btn btn-primary btn-sm w-100" onclick="submitCreateUser()">
           <i class="bi bi-plus-lg"></i> Criar Usuário
         </button>
       </form>
@@ -90,6 +95,27 @@
 
 {% block scripts %}
 <script>
+async function submitCreateUser() {
+  const form = document.getElementById('create-user-form');
+  const result = document.getElementById('create-user-result');
+  const pw = form.querySelector('[name=password]').value;
+  const confirm = form.querySelector('[name=confirm_password]').value;
+  if (pw !== confirm) {
+    result.innerHTML = '<div class="alert alert-danger py-1 small mb-2">As senhas não coincidem.</div>';
+    return;
+  }
+  result.innerHTML = '';
+  const data = new FormData(form);
+  const resp = await fetch('/api/admin/users', { method: 'POST', body: data });
+  const html = await resp.text();
+  if (!resp.ok) {
+    result.innerHTML = html;
+    return;
+  }
+  document.getElementById('user-table-container').innerHTML = html;
+  form.reset();
+}
+
 let editingUserId = null;
 
 function openUserEditModal(id, username, role, isActive, isSelf) {
