@@ -133,7 +133,8 @@
             <td>{% if s.loss_pct > 0 %}<span class="text-warning">{{ "%.0f"|format(s.loss_pct) }}%</span>{% else %}<span class="text-success">0%</span>{% endif %}</td>
             <td>
               {% for w in s.cam_warnings %}
-              <span class="badge bg-warning text-dark me-1" style="font-size:.7rem;">{{ w }}</span>
+              <span class="badge bg-warning text-dark me-1" style="font-size:.7rem; cursor:help;"
+                    title="{{ w.suggestion }}">{{ w.title }}</span>
               {% else %}
               <span class="text-secondary small">—</span>
               {% endfor %}
@@ -274,6 +275,11 @@
             <code class="text-secondary ms-2" style="font-size:.78rem;">{{ cam.ip_address }}</code>
             {% else %}
             <span class="fw-semibold small">{{ issue.title }}</span>
+            {% endif %}
+            {% if issue.suggestion %}
+            <div class="mt-1" style="font-size:.78rem; color:#94a3b8;">
+              <i class="bi bi-lightbulb me-1" style="color:#fbbf24;"></i>{{ issue.suggestion }}
+            </div>
             {% endif %}
           </div>
           {% if cam %}

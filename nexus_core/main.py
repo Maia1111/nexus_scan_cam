@@ -975,12 +975,15 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
     stats_atencao  = [s for s in network_stats if _classify(s) == "atencao"]
     stats_normal   = [s for s in network_stats if _classify(s) == "normal"]
 
-    # Attach per-camera warning labels to each atencao row (avoids double counting)
-    _warn_map: dict[int, list[str]] = {}
+    # Attach per-camera warning labels+suggestions to each atencao row
+    _warn_map: dict[int, list[dict]] = {}
     for iss in issues:
         if iss.get("severity") == "warning" and iss.get("camera"):
             cid = iss["camera"].id
-            _warn_map.setdefault(cid, []).append(iss["title"])
+            _warn_map.setdefault(cid, []).append({
+                "title": iss["title"],
+                "suggestion": iss.get("suggestion", ""),
+            })
     for s in stats_atencao:
         s["cam_warnings"] = _warn_map.get(s["cam"].id, [])
 
