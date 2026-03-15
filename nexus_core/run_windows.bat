@@ -1,110 +1,115 @@
 @echo off
 setlocal EnableDelayedExpansion
 cd /d "%~dp0"
-title Nexus Scan IP Cam
+title Nexus Scan IP Cam - Launcher
 
 echo ==================================================
 echo         NEXUS SCAN - INICIANDO SISTEMA
 echo ==================================================
 echo.
 
-:: 1. Tenta usar o ambiente virtual local se ele ja existir
-if exist ".venv\Scripts\python.exe" (
-    echo [OK] Ambiente configurado detectado.
-    echo [INFO] Abrindo o sistema...
-    echo.
-    ".venv\Scripts\python.exe" main.py
-    goto fim
+:: --- CONFIGURAÇÃO ---
+set "PORTABLE_DIR=%~dp0python_bin"
+set "PYTHON_EXE=%PORTABLE_DIR%\python.exe"
+set "VENV_DIR=%~dp0.venv"
+set "PYTHON_URL=https://www.python.org/ftp/python/3.12.7/python-3.12.7-embed-amd64.zip"
+
+:: 1. VERIFICA SE EXISTE PYTHON PORTÁTIL (Prioridade Máxima)
+if exist "!PYTHON_EXE!" (
+    echo [OK] Motor portatil detectado em !PORTABLE_DIR!
+    goto check_venv
 )
 
-:: 2. Se nao tem .venv, precisamos do Python para criar um
-echo [INFO] Preparando o sistema para o primeiro uso...
-echo [INFO] Verificando requisitos de software...
-
-set "PYTHON_EXE="
-
-:: Procura 'python' no PATH
+:: 2. VERIFICA SE EXISTE PYTHON NO SISTEMA
 python --version >nul 2>&1
 if %errorlevel% equ 0 (
+    echo [OK] Python do sistema detectado.
     set "PYTHON_EXE=python"
-    goto found_python
+    goto check_venv
 )
 
-:: Procura pelo Launcher 'py'
-py --version >nul 2>&1
-if %errorlevel% equ 0 (
-    set "PYTHON_EXE=py"
-    goto found_python
-)
-
-:: Procura em caminhos comuns do Windows (AppData)
-for /d %%d in ("%USERPROFILE%\AppData\Local\Programs\Python\Python*") do (
-    if exist "%%d\python.exe" (
-        set "PYTHON_EXE=%%d\python.exe"
-        goto found_python
-    )
-)
-
-:: Procura em C:\Python
-for /d %%d in ("C:\Python*") do (
-    if exist "%%d\python.exe" (
-        set "PYTHON_EXE=%%d\python.exe"
-        goto found_python
-    )
-)
-
-:: Procura em Program Files
-for /d %%d in ("C:\Program Files\Python*") do (
-    if exist "%%d\python.exe" (
-        set "PYTHON_EXE=%%d\python.exe"
-        goto found_python
-    )
-)
-
-:not_found
+:: 3. AUTO-BOOTSTRAP (Baixa Python se não encontrar nada)
+echo [!] Python nao encontrado no computador.
+echo [INFO] Tentando baixar motor portatil automaticamente...
 echo.
-echo [!] OPS! O PYTHON NÃO FOI ENCONTRADO.
-echo.
-echo Para o Nexus Scan funcionar, voce precisa do Python instalado.
-echo.
-echo COMO RESOLVER:
-echo 1. Baixe o instalador aqui: https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe
-echo 2. Ao instalar, marque a caixa: [X] Add Python to PATH
-echo 3. Apos instalar, feche esta janela e abra o Nexus Scan novamente.
-echo.
-pause
-exit /b 1
 
-:found_python
-echo [OK] Motor do sistema localizado.
-echo [INFO] Instalando componentes necessarios (isso ocorre apenas uma vez)...
+if not exist "!PORTABLE_DIR!" mkdir "!PORTABLE_DIR!"
 
-"!PYTHON_EXE!" -m venv .venv >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERRO] Falha ao criar a base do sistema. Tente rodar como Administrador.
+echo [1/3] Baixando Python (aguarde)...
+powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('!PYTHON_URL!', 'python_temp.zip') }"
+
+if not exist "python_temp.zip" (
+    echo [ERRO] Falha ao baixar o Python. Verifique sua internet.
+    echo Se voce estiver offline, copie a pasta 'python_bin' de outro computador.
     pause
     exit /b 1
 )
 
-echo [INFO] Configurando modulos de camera...
-".venv\Scripts\pip.exe" install -r requirements.txt --quiet
+echo [2/3] Extraindo arquivos...
+powershell -Command "Expand-Archive -Path 'python_temp.zip' -DestinationPath '!PORTABLE_DIR!' -Force"
+del python_temp.zip
+
+echo [3/3] Configurando motor...
+:: Habilita o carregamento de bibliotecas externas no Python Embeddable
+set "PTH_FILE="
+for %%f in ("!PORTABLE_DIR!\python*._pth") do set "PTH_FILE=%%f"
+if defined PTH_FILE (
+    echo. >> "!PORTABLE_DIR!\python312._pth"
+    echo import site >> "!PORTABLE_DIR!\python312._pth"
+)
+
+:: Baixa get-pip para o novo Python
+echo [INFO] Instalando gerenciador de pacotes...
+powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://bootstrap.pypa.io/get-pip.py', 'get-pip.py')"
+"!PYTHON_EXE!" get-pip.py --quiet
+del get-pip.py
+
+echo [OK] Motor portatil configurado com sucesso.
+echo.
+
+:check_venv
+:: 4. VERIFICA O AMBIENTE VIRTUAL
+echo [INFO] Verificando integridade do ambiente...
+
+:: Se o .venv existe, verificamos se o caminho bate (evita erro de mudança de pasta)
+if exist "!VENV_DIR!\Scripts\python.exe" (
+    :: Tenta rodar um comando simples. Se falhar, o .venv está quebrado (ex: mudou de pasta)
+    "!VENV_DIR!\Scripts\python.exe" -c "import os" >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo [OK] Ambiente pronto. Iniciando...
+        "!VENV_DIR!\Scripts\python.exe" main.py
+        goto fim
+    ) else (
+        echo [AVISO] Pasta do projeto mudou de lugar. Atualizando ambiente...
+        rmdir /s /q "!VENV_DIR!"
+    )
+)
+
+:: 5. CRIAÇÃO/ATUALIZAÇÃO DO AMBIENTE
+echo [INFO] Preparando módulos (isso ocorre apenas na primeira vez)...
+
+"!PYTHON_EXE!" -m venv "!VENV_DIR!"
 if %errorlevel% neq 0 (
-    echo [ERRO] Falha ao baixar componentes. Verifique sua internet.
+    echo [ERRO] Falha ao criar ambiente virtual. Tente rodar como Administrador.
     pause
     exit /b 1
 )
 
-echo [OK] Tudo pronto!
-echo [INFO] Criando atalhos na Area de Trabalho e na pasta do projeto...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\Configurar_Nexus_Scan.ps1"
+echo [INFO] Instalando requisitos...
+"!VENV_DIR!\Scripts\pip.exe" install -r requirements.txt --quiet
+if %errorlevel% neq 0 (
+    echo [ERRO] Falha ao instalar componentes. Verifique sua internet ou VPN.
+    pause
+    exit /b 1
+)
+
+echo [OK] Sistema atualizado.
 echo.
-echo [OK] Iniciando o Nexus Scan...
-echo.
-".venv\Scripts\python.exe" main.py
+"!VENV_DIR!\Scripts\python.exe" main.py
 
 :fim
 if %errorlevel% neq 0 (
     echo.
-    echo [INFO] O sistema foi encerrado.
+    echo [INFO] O sistema foi encerrado com erro (%errorlevel%).
     pause
 )
