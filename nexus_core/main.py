@@ -1349,12 +1349,16 @@ async def nvr_page(request: Request):
         .where(Camera.is_nvr == False, Camera.parent.is_null(True))
         .order_by(Camera.ip_address)
     )
+    orphan_cameras_json = [
+        {"id": c.id, "ip_address": c.ip_address, "name": c.name or ""}
+        for c in orphan_cameras
+    ]
     return templates.TemplateResponse("nvr.html", {
         "request": request,
         "user": user,
         "is_admin": user.role == "ADMIN",
         "nvrs": nvrs,
-        "orphan_cameras": orphan_cameras,
+        "orphan_cameras": orphan_cameras_json,
     })
 
 
