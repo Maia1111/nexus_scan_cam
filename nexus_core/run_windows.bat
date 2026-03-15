@@ -20,7 +20,15 @@ if exist "!PYTHON_EXE!" (
     goto check_venv
 )
 
-:: 2. VERIFICA SE EXISTE PYTHON NO SISTEMA
+:: 2. VERIFICA PYTHON VIA LAUNCHER (py.exe - mais confiavel no Windows)
+py --version >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [OK] Python Launcher detectado ^(py.exe^).
+    set "PYTHON_EXE=py"
+    goto check_venv
+)
+
+:: 3. VERIFICA PYTHON DIRETO NO PATH
 python --version >nul 2>&1
 if %errorlevel% equ 0 (
     echo [OK] Python do sistema detectado.
@@ -28,19 +36,19 @@ if %errorlevel% equ 0 (
     goto check_venv
 )
 
-:: 3. AUTO-BOOTSTRAP (Baixa Python se não encontrar nada)
+:: 4. AUTO-BOOTSTRAP (Baixa Python portátil se não encontrar nada)
 echo [!] Python nao encontrado no computador.
 echo [INFO] Tentando baixar motor portatil automaticamente...
 echo.
 
 if not exist "!PORTABLE_DIR!" mkdir "!PORTABLE_DIR!"
 
-echo [1/3] Baixando Python (aguarde)...
+echo [1/3] Baixando Python 3.12 portatil (aguarde)...
 powershell -Command "& { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('!PYTHON_URL!', 'python_temp.zip') }"
 
 if not exist "python_temp.zip" (
     echo [ERRO] Falha ao baixar o Python. Verifique sua internet.
-    echo Se voce estiver offline, copie a pasta 'python_bin' de outro computador.
+    echo Se voce estiver offline, instale o Python manualmente em python.org
     pause
     exit /b 1
 )
@@ -49,48 +57,47 @@ echo [2/3] Extraindo arquivos...
 powershell -Command "Expand-Archive -Path 'python_temp.zip' -DestinationPath '!PORTABLE_DIR!' -Force"
 del python_temp.zip
 
-echo [3/3] Configurando motor...
-:: Habilita o carregamento de bibliotecas externas no Python Embeddable
-set "PTH_FILE="
-for %%f in ("!PORTABLE_DIR!\python*._pth") do set "PTH_FILE=%%f"
-if defined PTH_FILE (
-    echo. >> "!PORTABLE_DIR!\python312._pth"
-    echo import site >> "!PORTABLE_DIR!\python312._pth"
+echo [3/3] Configurando motor portatil...
+:: Habilita site-packages no Python Embeddable (nome do arquivo detectado automaticamente)
+for %%f in ("!PORTABLE_DIR!\python*._pth") do (
+    findstr /c:"import site" "%%f" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo import site >> "%%f"
+    )
 )
 
-:: Baixa get-pip para o novo Python
+:: Instala pip no Python portátil
 echo [INFO] Instalando gerenciador de pacotes...
 powershell -Command "(New-Object System.Net.WebClient).DownloadFile('https://bootstrap.pypa.io/get-pip.py', 'get-pip.py')"
 "!PYTHON_EXE!" get-pip.py --quiet
-del get-pip.py
+if exist get-pip.py del get-pip.py
 
 echo [OK] Motor portatil configurado com sucesso.
 echo.
 
 :check_venv
-:: 4. VERIFICA O AMBIENTE VIRTUAL
+:: 5. VERIFICA O AMBIENTE VIRTUAL
 echo [INFO] Verificando integridade do ambiente...
 
-:: Se o .venv existe, verificamos se o caminho bate (evita erro de mudança de pasta)
 if exist "!VENV_DIR!\Scripts\python.exe" (
-    :: Tenta rodar um comando simples. Se falhar, o .venv está quebrado (ex: mudou de pasta)
-    "!VENV_DIR!\Scripts\python.exe" -c "import os" >nul 2>&1
+    :: Testa se o venv ainda funciona (pode quebrar se a pasta mudou de lugar)
+    "!VENV_DIR!\Scripts\python.exe" -c "import fastapi" >nul 2>&1
     if %errorlevel% equ 0 (
         echo [OK] Ambiente pronto. Iniciando...
-        "!VENV_DIR!\Scripts\python.exe" main.py
-        goto fim
+        goto start_app
     ) else (
-        echo [AVISO] Pasta do projeto mudou de lugar. Atualizando ambiente...
+        echo [AVISO] Ambiente desatualizado ou corrompido. Recriando...
         rmdir /s /q "!VENV_DIR!"
     )
 )
 
-:: 5. CRIAÇÃO/ATUALIZAÇÃO DO AMBIENTE
-echo [INFO] Preparando módulos (isso ocorre apenas na primeira vez)...
+:: 6. CRIAÇÃO DO AMBIENTE VIRTUAL
+echo [INFO] Preparando modulos pela primeira vez (aguarde)...
 
 "!PYTHON_EXE!" -m venv "!VENV_DIR!"
 if %errorlevel% neq 0 (
-    echo [ERRO] Falha ao criar ambiente virtual. Tente rodar como Administrador.
+    echo [ERRO] Falha ao criar ambiente virtual.
+    echo Tente rodar como Administrador ou verifique a versao do Python ^(minimo 3.10^).
     pause
     exit /b 1
 )
@@ -98,18 +105,20 @@ if %errorlevel% neq 0 (
 echo [INFO] Instalando requisitos...
 "!VENV_DIR!\Scripts\pip.exe" install -r requirements.txt --quiet
 if %errorlevel% neq 0 (
-    echo [ERRO] Falha ao instalar componentes. Verifique sua internet ou VPN.
+    echo [ERRO] Falha ao instalar componentes. Verifique internet ou VPN.
     pause
     exit /b 1
 )
 
-echo [OK] Sistema atualizado.
+echo [OK] Ambiente configurado com sucesso.
 echo.
+
+:start_app
 "!VENV_DIR!\Scripts\python.exe" main.py
 
 :fim
 if %errorlevel% neq 0 (
     echo.
-    echo [INFO] O sistema foi encerrado com erro (%errorlevel%).
+    echo [INFO] O sistema foi encerrado com erro ^(%errorlevel%^).
     pause
 )

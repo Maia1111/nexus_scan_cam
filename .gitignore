@@ -12,3 +12,5 @@ build/
 *.egg-info/
 .env
 debug_*.py
+python_bin/
+get-pip.py
