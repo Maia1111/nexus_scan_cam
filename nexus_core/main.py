@@ -703,25 +703,27 @@ async def remove_camera_from_group(request: Request, group_id: int, camera_id: i
 
 
 # ── Diagnostics helpers ───────────────────────────────────────────────────────
-async def _tcp_ping_multi(ip: str, port: int, count: int = 4, timeout: float = 1.5) -> dict:
-    """Pinga via TCP `count` vezes e retorna métricas de latência/perda."""
-    loop = asyncio.get_running_loop()
-
-    def _connect() -> float | None:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
+async def _tcp_ping_once(ip: str, port: int, timeout: float) -> float | None:
+    """Tenta uma conexão TCP assíncrona e retorna a latência em ms, ou None se falhar."""
+    try:
         t0 = time.perf_counter()
+        _, writer = await asyncio.wait_for(asyncio.open_connection(ip, port), timeout=timeout)
+        ms = (time.perf_counter() - t0) * 1000
+        writer.close()
         try:
-            return (time.perf_counter() - t0) * 1000 if sock.connect_ex((ip, port)) == 0 else None
-        except OSError:
-            return None
-        finally:
-            sock.close()
+            await writer.wait_closed()
+        except Exception:
+            pass
+        return ms
+    except Exception:
+        return None
 
-    samples: list[float | None] = []
-    for _ in range(count):
-        samples.append(await loop.run_in_executor(None, _connect))
 
+async def _tcp_ping_multi(ip: str, port: int, count: int = 3, timeout: float = 1.0) -> dict:
+    """Pinga via TCP `count` vezes em paralelo e retorna métricas de latência/perda."""
+    samples: list[float | None] = await asyncio.gather(
+        *[_tcp_ping_once(ip, port, timeout) for _ in range(count)]
+    )
     ok = [s for s in samples if s is not None]
     fail = len(samples) - len(ok)
     avg = sum(ok) / len(ok) if ok else None
@@ -842,9 +844,13 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
             ports = [int(p) for p in (cam.open_ports_csv or "").split(",") if p.strip().isdigit()]
             return ports[0] if ports else 554
 
-        ping_results = await asyncio.gather(
-            *[_tcp_ping_multi(cam.ip_address, _get_port(cam)) for cam in cameras]
-        )
+        sem = asyncio.Semaphore(80)
+
+        async def _ping_with_sem(cam):
+            async with sem:
+                return await _tcp_ping_multi(cam.ip_address, _get_port(cam))
+
+        ping_results = await asyncio.gather(*[_ping_with_sem(cam) for cam in cameras])
         for cam, p in zip(cameras, ping_results):
             label = cam.name or cam.ip_address
             if cam.is_online and not p["reachable"]:
