@@ -1,8 +1,33 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="page-title">
-  <i class="bi bi-activity"></i> Saúde da Rede
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+  <div class="page-title mb-0">
+    <i class="bi bi-activity"></i> Saúde da Rede
+  </div>
+  <div class="d-flex align-items-center gap-2">
+    <button id="verify-btn" class="btn btn-primary" onclick="runDiagnostics()">
+      <i class="bi bi-play-fill me-1"></i> Verificar Tudo
+    </button>
+    <div class="btn-group">
+      <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown">
+        <i class="bi bi-file-earmark-pdf me-1"></i> Relatórios PDF
+      </button>
+      <ul class="dropdown-menu">
+        <li><a class="dropdown-item" href="/diagnostics/report/pdf"><i class="bi bi-list-check me-2"></i>Geral (Cronológico)</a></li>
+        <li><a class="dropdown-item" href="/diagnostics/groups/report/pdf"><i class="bi bi-collection me-2"></i>Por Grupos / Setores</a></li>
+      </ul>
+    </div>
+    <div class="btn-group">
+      <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+        <i class="bi bi-eye me-1"></i> Visualizar
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" href="/diagnostics/report" target="_blank">Relatório Geral</a></li>
+        <li><a class="dropdown-item" href="/diagnostics/groups/report" target="_blank">Relatório por Grupos</a></li>
+      </ul>
+    </div>
+  </div>
 </div>
 
 <div class="row g-3 mb-4">
@@ -12,36 +37,9 @@
         <div style="font-size:2.2rem; color:#3b82f6;">
           <i class="bi bi-search-heart"></i>
         </div>
-        <div class="flex-grow-1">
+        <div>
           <div class="fw-semibold">Verificar câmeras</div>
           <small class="text-secondary">Analisa conflitos, status e problemas de configuração</small>
-        </div>
-        <div class="d-flex flex-wrap gap-2">
-          <button id="verify-btn" class="btn btn-primary" onclick="runDiagnostics()">
-            <i class="bi bi-play-fill me-1"></i> Verificar Tudo
-          </button>
-          
-          <div class="vr mx-2"></div>
-          
-          <div class="btn-group">
-             <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown">
-               <i class="bi bi-file-earmark-pdf"></i> Relatórios PDF
-             </button>
-             <ul class="dropdown-menu">
-               <li><a class="dropdown-item" href="/diagnostics/report/pdf"><i class="bi bi-list-check me-2"></i>Geral (Cronológico)</a></li>
-               <li><a class="dropdown-item" href="/diagnostics/groups/report/pdf"><i class="bi bi-collection me-2"></i>Por Grupos / Setores</a></li>
-             </ul>
-          </div>
-
-          <div class="btn-group">
-             <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-               <i class="bi bi-eye"></i> Visualizar
-             </button>
-             <ul class="dropdown-menu">
-               <li><a class="dropdown-item" href="/diagnostics/report" target="_blank">Relatório Geral</a></li>
-               <li><a class="dropdown-item" href="/diagnostics/groups/report" target="_blank">Relatório por Grupos</a></li>
-             </ul>
-          </div>
         </div>
       </div>
     </div>
@@ -70,24 +68,75 @@
   </div>
 </div>
 
+<!-- Modal rápido de credenciais -->
+<div class="modal fade" id="credModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-key me-2"></i>Credenciais</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="cred-modal-info" class="text-secondary small mb-3"></div>
+        <div id="cred-result" class="mb-2"></div>
+        <div class="mb-3">
+          <label class="form-label">Usuário</label>
+          <input type="text" id="cred-username" class="form-control" autocomplete="off">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Senha</label>
+          <input type="password" id="cred-password" class="form-control" autocomplete="new-password">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveCredentials()">
+          <i class="bi bi-floppy me-1"></i> Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
+let _credCamId = null;
+
+function openCredModal(camId, camName, camIp, currentUsername) {
+  _credCamId = camId;
+  document.getElementById('cred-modal-info').innerHTML =
+    `<i class="bi bi-camera-video me-1"></i><strong>${camName || camIp}</strong> <code class="ms-1">${camIp}</code>`;
+  document.getElementById('cred-username').value = currentUsername || '';
+  document.getElementById('cred-password').value = '';
+  document.getElementById('cred-result').innerHTML = '';
+  new bootstrap.Modal(document.getElementById('credModal')).show();
+}
+
+async function saveCredentials() {
+  if (!_credCamId) return;
+  const username = document.getElementById('cred-username').value;
+  const password = document.getElementById('cred-password').value;
+  const form = new FormData();
+  form.append('username', username);
+  form.append('password', password);
+  const resp = await fetch(`/api/cameras/${_credCamId}/credentials`, { method: 'POST', body: form });
+  const html = await resp.text();
+  document.getElementById('cred-result').innerHTML = html;
+  if (resp.ok) setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('credModal')).hide(), 1200);
+}
+
 async function runDiagnostics() {
   const btn = document.getElementById('verify-btn');
   const results = document.getElementById('diag-results');
-
-  // Estado: carregando
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Verificando...';
-
   results.innerHTML = `
     <div class="card text-center py-5">
       <div class="spinner-border text-primary mx-auto" style="width:2.5rem;height:2.5rem;"></div>
       <p class="mt-3 text-secondary">Analisando câmeras e rede...</p>
     </div>`;
-
   try {
     const resp = await fetch('/api/diagnostics/run');
     const html = await resp.text();
@@ -100,6 +149,30 @@ async function runDiagnostics() {
     btn.disabled = false;
     btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i> Verificar novamente';
   }
+}
+
+function toggleDiag(id) {
+  const body = document.getElementById('diag-' + id);
+  const chev = document.getElementById('chev-' + id);
+  const hidden = body.classList.toggle('d-none');
+  chev.style.transform = hidden ? '' : 'rotate(180deg)';
+}
+
+function filterDiag(query) {
+  const q = query.trim().toLowerCase();
+
+  document.querySelectorAll('.diag-row, .diag-cred-row').forEach(el => {
+    const match = !q || el.dataset.ip.includes(q) || el.dataset.name.includes(q);
+    el.style.display = match ? '' : 'none';
+    if (match && q) {
+      const section = el.closest('[id^="diag-"]');
+      if (section) {
+        section.classList.remove('d-none');
+        const chev = document.getElementById('chev-' + section.id.replace('diag-', ''));
+        if (chev) chev.style.transform = 'rotate(180deg)';
+      }
+    }
+  });
 }
 </script>
 {% endblock %}

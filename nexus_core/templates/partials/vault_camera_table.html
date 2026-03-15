@@ -8,6 +8,7 @@
         <th>Usuário</th>
         <th>Senha</th>
         <th>Status</th>
+        <th></th>
       </tr>
     </thead>
     <tbody>
@@ -15,7 +16,10 @@
       <tr>
         <td><code>{{ cam.ip_address }}</code></td>
         <td>{{ cam.name or '—' }}</td>
-        <td>{{ cam.username or '—' }}</td>
+        <td>
+          {% if cam.username %}{{ cam.username }}
+          {% else %}<span class="text-secondary">—</span>{% endif %}
+        </td>
         <td>
           <div class="d-flex align-items-center gap-2">
             {% if cam.password %}
@@ -37,6 +41,13 @@
           {% else %}
           <span class="badge bg-secondary">Sem senha</span>
           {% endif %}
+        </td>
+        <td>
+          <button class="btn btn-sm btn-outline-warning py-0"
+                  onclick="openVaultCredModal({{ cam.id }}, '{{ (cam.name or '') | e }}', '{{ cam.ip_address }}', '{{ (cam.username or '') | e }}')"
+                  title="Editar credenciais">
+            <i class="bi bi-key"></i>
+          </button>
         </td>
       </tr>
       {% endfor %}

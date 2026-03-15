@@ -20,79 +20,43 @@
   </div>
 </div>
 
-<!-- ── Tabela de métricas de rede ─────────────────────────────── -->
+{% set danger_issues = issues | selectattr("severity", "equalto", "danger") | list %}
+{% set info_issues   = issues | selectattr("severity", "equalto", "info") | selectattr("type", "equalto", "no_credentials") | list %}
+
 {% if network_stats %}
-<div class="card mb-4">
-  <div class="card-body p-0">
-    <div class="px-3 pt-3 pb-2 d-flex align-items-center gap-2">
-      <i class="bi bi-reception-4 text-primary"></i>
-      <strong>Métricas de rede (TCP ping ×4)</strong>
-      <small class="text-secondary ms-auto">Latência esperada em LAN: &lt;20ms</small>
+
+<div class="mb-3" style="max-width:360px">
+  <input type="text" id="diag-search" class="form-control form-control-sm"
+         placeholder="Buscar câmera por IP ou nome..."
+         oninput="filterDiag(this.value)">
+</div>
+
+<!-- Sem resposta -->
+{% if stats_offline %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center"
+       style="cursor:pointer" onclick="toggleDiag('offline')">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-wifi-off" style="color:#ef4444"></i>
+      <span class="fw-semibold" style="color:#ef4444">Sem resposta</span>
+      <span class="badge rounded-pill" style="background:#ef4444; color:#000">{{ stats_offline | length }}</span>
     </div>
+    <i class="bi bi-chevron-down text-secondary" id="chev-offline" style="transition:transform .2s"></i>
+  </div>
+  <div id="diag-offline" class="d-none">
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0" style="font-size:.875rem;">
-        <thead>
-          <tr>
-            <th>Câmera</th>
-            <th>IP</th>
-            <th>Latência méd.</th>
-            <th>Jitter</th>
-            <th>Perda</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
+        <thead><tr><th>Câmera</th><th>IP</th><th>Latência</th><th>Jitter</th><th>Perda</th><th>Estado</th><th></th></tr></thead>
         <tbody>
-          {% for s in network_stats %}
-          {% set cam = s.cam %}
-          <tr>
+          {% for s in stats_offline %}{% set cam = s.cam %}
+          <tr class="diag-row" data-name="{{ (cam.name or '') | lower }}" data-ip="{{ cam.ip_address }}">
             <td>{{ cam.name or '—' }}</td>
             <td><code>{{ cam.ip_address }}</code></td>
-            <td>
-              {% if s.avg_ms is not none %}
-                {% if s.avg_ms > 300 %}
-                  <span class="text-danger fw-bold">{{ "%.0f"|format(s.avg_ms) }}ms</span>
-                {% elif s.avg_ms > 80 %}
-                  <span class="text-warning">{{ "%.0f"|format(s.avg_ms) }}ms</span>
-                {% else %}
-                  <span class="text-success">{{ "%.0f"|format(s.avg_ms) }}ms</span>
-                {% endif %}
-              {% else %}
-                <span class="text-secondary">—</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if s.jitter_ms is not none and s.jitter_ms > 0 %}
-                {% if s.jitter_ms > 100 %}
-                  <span class="text-danger">{{ "%.0f"|format(s.jitter_ms) }}ms</span>
-                {% elif s.jitter_ms > 40 %}
-                  <span class="text-warning">{{ "%.0f"|format(s.jitter_ms) }}ms</span>
-                {% else %}
-                  <span class="text-secondary">{{ "%.0f"|format(s.jitter_ms) }}ms</span>
-                {% endif %}
-              {% else %}
-                <span class="text-secondary">0ms</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if s.loss_pct > 0 %}
-                <span class="{{ 'text-danger' if s.loss_pct >= 50 else 'text-warning' }}">
-                  {{ "%.0f"|format(s.loss_pct) }}%
-                </span>
-              {% else %}
-                <span class="text-success">0%</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if not s.reachable %}
-                <span class="badge bg-danger">Sem resposta</span>
-              {% elif s.avg_ms > 300 or s.jitter_ms > 100 or s.loss_pct >= 50 %}
-                <span class="badge bg-danger">Crítico</span>
-              {% elif s.avg_ms > 80 or s.jitter_ms > 40 or s.loss_pct > 0 %}
-                <span class="badge bg-warning text-dark">Atenção</span>
-              {% else %}
-                <span class="badge bg-success">Normal</span>
-              {% endif %}
-            </td>
+            <td><span class="text-secondary">—</span></td>
+            <td><span class="text-secondary">—</span></td>
+            <td><span class="text-danger">100%</span></td>
+            <td><span class="badge bg-danger">Sem resposta</span></td>
+            <td><a href="http://{{ cam.ip_address }}" target="_blank" class="btn btn-sm btn-outline-info py-0" title="Abrir interface web"><i class="bi bi-eye"></i></a></td>
           </tr>
           {% endfor %}
         </tbody>
@@ -102,95 +66,231 @@
 </div>
 {% endif %}
 
-<!-- ── Problemas encontrados ──────────────────────────────────── -->
-{% set danger_issues  = issues | selectattr("severity", "equalto", "danger")  | list %}
-{% set warning_issues = issues | selectattr("severity", "equalto", "warning") | list %}
-{% set info_issues    = issues | selectattr("severity", "equalto", "info")    | list %}
+<!-- Crítico (rede) -->
+{% if stats_critico %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center"
+       style="cursor:pointer" onclick="toggleDiag('critico')">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-exclamation-triangle-fill" style="color:#ef4444"></i>
+      <span class="fw-semibold" style="color:#ef4444">Crítico</span>
+      <span class="badge rounded-pill" style="background:#ef4444; color:#000">{{ stats_critico | length }}</span>
+    </div>
+    <i class="bi bi-chevron-down text-secondary" id="chev-critico" style="transition:transform .2s"></i>
+  </div>
+  <div id="diag-critico" class="d-none">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0" style="font-size:.875rem;">
+        <thead><tr><th>Câmera</th><th>IP</th><th>Latência</th><th>Jitter</th><th>Perda</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          {% for s in stats_critico %}{% set cam = s.cam %}
+          <tr class="diag-row" data-name="{{ (cam.name or '') | lower }}" data-ip="{{ cam.ip_address }}">
+            <td>{{ cam.name or '—' }}</td>
+            <td><code>{{ cam.ip_address }}</code></td>
+            <td>{% if s.avg_ms is not none %}<span class="text-danger fw-bold">{{ "%.0f"|format(s.avg_ms) }}ms</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+            <td>{% if s.jitter_ms and s.jitter_ms > 0 %}<span class="text-danger">{{ "%.0f"|format(s.jitter_ms) }}ms</span>{% else %}<span class="text-secondary">0ms</span>{% endif %}</td>
+            <td>{% if s.loss_pct > 0 %}<span class="text-danger">{{ "%.0f"|format(s.loss_pct) }}%</span>{% else %}<span class="text-success">0%</span>{% endif %}</td>
+            <td><span class="badge bg-danger">Crítico</span></td>
+            <td><a href="http://{{ cam.ip_address }}" target="_blank" class="btn btn-sm btn-outline-info py-0" title="Abrir interface web"><i class="bi bi-eye"></i></a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
 
-{% if not issues %}
-<div class="card text-center py-5">
+<!-- Atenção (rede + problemas estruturais) — UNIFICADO -->
+{% set atencao_total = (stats_atencao | length) + (warnings_structural | length) %}
+{% if atencao_total > 0 %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center"
+       style="cursor:pointer" onclick="toggleDiag('atencao')">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-exclamation-circle" style="color:#fbbf24"></i>
+      <span class="fw-semibold" style="color:#fbbf24">Atenção</span>
+      <span class="badge rounded-pill" style="background:#fbbf24; color:#000">{{ atencao_total }}</span>
+    </div>
+    <i class="bi bi-chevron-down text-secondary" id="chev-atencao" style="transition:transform .2s"></i>
+  </div>
+  <div id="diag-atencao" class="d-none">
+    {% if stats_atencao %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0" style="font-size:.875rem;">
+        <thead>
+          <tr>
+            <th>Câmera</th><th>IP</th><th>Latência</th><th>Jitter</th><th>Perda</th><th>Instabilidades</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in stats_atencao %}{% set cam = s.cam %}
+          <tr class="diag-row" data-name="{{ (cam.name or '') | lower }}" data-ip="{{ cam.ip_address }}">
+            <td>{{ cam.name or '—' }}</td>
+            <td><code>{{ cam.ip_address }}</code></td>
+            <td>{% if s.avg_ms is not none %}{% if s.avg_ms > 80 %}<span class="text-warning">{{ "%.0f"|format(s.avg_ms) }}ms</span>{% else %}<span class="text-success">{{ "%.0f"|format(s.avg_ms) }}ms</span>{% endif %}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
+            <td>{% if s.jitter_ms and s.jitter_ms > 0 %}{% if s.jitter_ms > 40 %}<span class="text-warning">{{ "%.0f"|format(s.jitter_ms) }}ms</span>{% else %}<span class="text-secondary">{{ "%.0f"|format(s.jitter_ms) }}ms</span>{% endif %}{% else %}<span class="text-secondary">0ms</span>{% endif %}</td>
+            <td>{% if s.loss_pct > 0 %}<span class="text-warning">{{ "%.0f"|format(s.loss_pct) }}%</span>{% else %}<span class="text-success">0%</span>{% endif %}</td>
+            <td>
+              {% for w in s.cam_warnings %}
+              <span class="badge bg-warning text-dark me-1" style="font-size:.7rem;">{{ w }}</span>
+              {% else %}
+              <span class="text-secondary small">—</span>
+              {% endfor %}
+            </td>
+            <td><a href="http://{{ cam.ip_address }}" target="_blank" class="btn btn-sm btn-outline-info py-0" title="Abrir interface web"><i class="bi bi-eye"></i></a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+    {% if warnings_structural %}
+    <div class="p-3 {% if stats_atencao %}border-top border-secondary{% endif %}">
+      {% for issue in warnings_structural %}
+      <div class="card mb-2" style="border-left:3px solid #fbbf24 !important;">
+        <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
+          <i class="bi bi-{{ issue.icon }} mt-1 flex-shrink-0" style="color:#fbbf24; font-size:1.1rem;"></i>
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">{{ issue.title }}</div>
+            <div class="text-secondary" style="font-size:.82rem;">{{ issue.detail }}</div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Normal -->
+{% if stats_normal %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center"
+       style="cursor:pointer" onclick="toggleDiag('normal')">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-check-circle-fill" style="color:#22c55e"></i>
+      <span class="fw-semibold" style="color:#22c55e">Normal</span>
+      <span class="badge rounded-pill" style="background:#22c55e; color:#000">{{ stats_normal | length }}</span>
+    </div>
+    <i class="bi bi-chevron-down text-secondary" id="chev-normal" style="transition:transform .2s"></i>
+  </div>
+  <div id="diag-normal" class="d-none">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0" style="font-size:.875rem;">
+        <thead><tr><th>Câmera</th><th>IP</th><th>Latência</th><th>Jitter</th><th>Perda</th><th>Estado</th><th></th></tr></thead>
+        <tbody>
+          {% for s in stats_normal %}{% set cam = s.cam %}
+          <tr class="diag-row" data-name="{{ (cam.name or '') | lower }}" data-ip="{{ cam.ip_address }}">
+            <td>{{ cam.name or '—' }}</td>
+            <td><code>{{ cam.ip_address }}</code></td>
+            <td><span class="text-success">{{ "%.0f"|format(s.avg_ms) }}ms</span></td>
+            <td><span class="text-secondary">{{ "%.0f"|format(s.jitter_ms or 0) }}ms</span></td>
+            <td><span class="text-success">0%</span></td>
+            <td><span class="badge bg-success">Normal</span></td>
+            <td><a href="http://{{ cam.ip_address }}" target="_blank" class="btn btn-sm btn-outline-info py-0" title="Abrir interface web"><i class="bi bi-eye"></i></a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}{# /network_stats #}
+
+<!-- Problemas Críticos (configuração/conflito) -->
+{% if danger_issues %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center"
+       style="cursor:pointer" onclick="toggleDiag('danger-issues')">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-x-circle-fill text-danger"></i>
+      <span class="fw-semibold text-danger">Problemas Críticos</span>
+      <span class="badge rounded-pill bg-danger">{{ danger_issues | length }}</span>
+    </div>
+    <i class="bi bi-chevron-down text-secondary" id="chev-danger-issues" style="transition:transform .2s"></i>
+  </div>
+  <div id="diag-danger-issues" class="d-none">
+    <div class="p-3">
+      {% for issue in danger_issues %}
+      <div class="card mb-2" style="border-left:3px solid #ef4444 !important;">
+        <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
+          <i class="bi bi-{{ issue.icon }} text-danger mt-1 flex-shrink-0" style="font-size:1.1rem;"></i>
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">{{ issue.title }}</div>
+            <div class="text-secondary" style="font-size:.82rem;">{{ issue.detail }}</div>
+          </div>
+          {% if issue.camera %}
+          <a href="http://{{ issue.camera.ip_address }}" target="_blank"
+             class="btn btn-sm btn-outline-danger flex-shrink-0" title="Abrir interface web">
+            <i class="bi bi-eye"></i>
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Credenciais não cadastradas no cofre -->
+{% if info_issues %}
+<div class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center"
+       style="cursor:pointer" onclick="toggleDiag('credenciais')">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-shield-exclamation text-info"></i>
+      <span class="fw-semibold text-info">Credenciais não cadastradas no cofre</span>
+      <span class="badge rounded-pill bg-info text-dark">{{ info_issues | length }}</span>
+    </div>
+    <i class="bi bi-chevron-down text-secondary" id="chev-credenciais" style="transition:transform .2s"></i>
+  </div>
+  <div id="diag-credenciais" class="d-none">
+    <div class="p-3">
+      {% for issue in info_issues %}
+      {% set cam = issue.camera %}
+      <div class="card mb-2 diag-cred-row"
+           data-name="{{ (cam.name or '') | lower }}" data-ip="{{ cam.ip_address }}"
+           style="border-left:3px solid #38bdf8 !important;">
+        <div class="card-body py-2 px-3 d-flex align-items-center gap-3">
+          <i class="bi bi-{{ issue.icon }} text-info flex-shrink-0" style="font-size:1.1rem;"></i>
+          <div class="flex-grow-1">
+            {% if cam %}
+            <span class="fw-semibold small">{{ cam.name or cam.ip_address }}</span>
+            <code class="text-secondary ms-2" style="font-size:.78rem;">{{ cam.ip_address }}</code>
+            {% else %}
+            <span class="fw-semibold small">{{ issue.title }}</span>
+            {% endif %}
+          </div>
+          {% if cam %}
+          <button class="btn btn-sm btn-outline-warning flex-shrink-0"
+                  onclick="openCredModal({{ cam.id }}, '{{ cam.name or '' | e }}', '{{ cam.ip_address }}', '{{ cam.username or '' | e }}')"
+                  title="Cadastrar credenciais">
+            <i class="bi bi-key"></i>
+          </button>
+          <a href="http://{{ cam.ip_address }}" target="_blank"
+             class="btn btn-sm btn-outline-info flex-shrink-0" title="Abrir interface web">
+            <i class="bi bi-eye"></i>
+          </a>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if not network_stats and not issues %}
+<div class="card text-center py-5 mt-3">
   <div style="font-size:3.5rem; color:#22c55e;"><i class="bi bi-patch-check-fill"></i></div>
   <h5 class="mt-3">Tudo funcionando normalmente!</h5>
   <p class="text-secondary mb-0">Nenhum problema de rede, configuração ou conflito encontrado.</p>
 </div>
-
-{% else %}
-
-{% if danger_issues %}
-<div class="mb-3">
-  <div class="d-flex align-items-center gap-2 mb-2">
-    <i class="bi bi-x-circle-fill text-danger"></i>
-    <span class="fw-semibold text-danger">Crítico — {{ danger_issues | length }} problema(s)</span>
-  </div>
-  {% for issue in danger_issues %}
-  <div class="card mb-2" style="border-left:3px solid #ef4444 !important;">
-    <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
-      <i class="bi bi-{{ issue.icon }} text-danger mt-1 flex-shrink-0" style="font-size:1.1rem;"></i>
-      <div class="flex-grow-1">
-        <div class="fw-semibold small">{{ issue.title }}</div>
-        <div class="text-secondary" style="font-size:.82rem;">{{ issue.detail }}</div>
-      </div>
-      {% if issue.camera %}
-      <a href="/cameras" class="btn btn-sm btn-outline-danger flex-shrink-0">
-        <i class="bi bi-arrow-right"></i>
-      </a>
-      {% endif %}
-    </div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{% if warning_issues %}
-<div class="mb-3">
-  <div class="d-flex align-items-center gap-2 mb-2">
-    <i class="bi bi-dot" style="color:#fbbf24; font-size:1.5rem;"></i>
-    <span class="fw-semibold" style="color:#fbbf24;">Atenção — {{ warning_issues | length }} item(s)</span>
-  </div>
-  {% for issue in warning_issues %}
-  <div class="card mb-2" style="border-left:3px solid #fbbf24 !important;">
-    <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
-      <i class="bi bi-{{ issue.icon }} mt-1 flex-shrink-0" style="color:#fbbf24; font-size:1.1rem;"></i>
-      <div class="flex-grow-1">
-        <div class="fw-semibold small">{{ issue.title }}</div>
-        <div class="text-secondary" style="font-size:.82rem;">{{ issue.detail }}</div>
-      </div>
-      {% if issue.camera %}
-      <a href="/cameras" class="btn btn-sm btn-outline-warning flex-shrink-0">
-        <i class="bi bi-arrow-right"></i>
-      </a>
-      {% endif %}
-    </div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
-{% if info_issues %}
-<div class="mb-3">
-  <div class="d-flex align-items-center gap-2 mb-2">
-    <i class="bi bi-info-circle-fill text-info"></i>
-    <span class="fw-semibold text-info">Informativo — {{ info_issues | length }} item(s)</span>
-  </div>
-  {% for issue in info_issues %}
-  <div class="card mb-2" style="border-left:3px solid #38bdf8 !important;">
-    <div class="card-body py-2 px-3 d-flex align-items-start gap-3">
-      <i class="bi bi-{{ issue.icon }} text-info mt-1 flex-shrink-0" style="font-size:1.1rem;"></i>
-      <div class="flex-grow-1">
-        <div class="fw-semibold small">{{ issue.title }}</div>
-        <div class="text-secondary" style="font-size:.82rem;">{{ issue.detail }}</div>
-      </div>
-      {% if issue.camera %}
-      <a href="/cameras" class="btn btn-sm btn-outline-info flex-shrink-0">
-        <i class="bi bi-arrow-right"></i>
-      </a>
-      {% endif %}
-    </div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-
 {% endif %}
 
 <div class="text-secondary small mt-2">

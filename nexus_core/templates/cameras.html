@@ -38,6 +38,21 @@
   </form>
 </div>
 
+<!-- Toolbar de seleção em lote (admin) -->
+{% if is_admin %}
+<div id="bulk-cam-toolbar" class="d-none mb-2 d-flex align-items-center gap-2 flex-wrap">
+  <button class="btn btn-sm btn-outline-secondary" onclick="selectAllCams()">
+    <i class="bi bi-check2-all me-1"></i>Selecionar tudo
+  </button>
+  <button class="btn btn-sm btn-outline-secondary" onclick="deselectAllCams()">
+    <i class="bi bi-x-lg me-1"></i>Desmarcar
+  </button>
+  <button id="bulk-del-btn" class="btn btn-sm btn-danger d-none" onclick="openBulkDeleteModal()">
+    <i class="bi bi-trash me-1"></i>Excluir Selecionadas (<span id="cam-sel-count">0</span>)
+  </button>
+</div>
+{% endif %}
+
 <!-- Tabela (carregada via HTMX) -->
 <div id="camera-list"
      hx-get="/partials/cameras"
@@ -135,6 +150,28 @@
         <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
         <button type="button" class="btn btn-danger btn-sm" id="confirm-delete-btn">
           <i class="bi bi-trash"></i> Remover
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmação Exclusão em Lote -->
+<div class="modal fade" id="bulkDeleteModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header border-danger">
+        <h5 class="modal-title text-danger"><i class="bi bi-trash"></i> Excluir em Lote</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Excluir <strong id="bulk-del-count"></strong> câmera(s) selecionada(s)?</p>
+        <small class="text-secondary">Esta ação não pode ser desfeita.</small>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="confirmBulkDelete()">
+          <i class="bi bi-trash"></i> Confirmar Exclusão
         </button>
       </div>
     </div>
@@ -311,6 +348,61 @@ async function openRouteModal(ip, name) {
     document.getElementById('route-error').classList.remove('d-none');
   }
 }
+
+// ── Seleção em lote ──────────────────────────────────────────
+function updateCamBulkCount() {
+  const checked = document.querySelectorAll('.cam-chk:checked');
+  const count = checked.length;
+  const toolbar = document.getElementById('bulk-cam-toolbar');
+  const btn = document.getElementById('bulk-del-btn');
+  if (!toolbar) return;
+  toolbar.classList.toggle('d-none', document.querySelectorAll('.cam-chk').length === 0);
+  document.getElementById('cam-sel-count').textContent = count;
+  btn.classList.toggle('d-none', count === 0);
+  const all = document.querySelectorAll('.cam-chk');
+  const chkAll = document.getElementById('chk-cam-all');
+  if (chkAll) {
+    chkAll.indeterminate = count > 0 && count < all.length;
+    chkAll.checked = all.length > 0 && count === all.length;
+  }
+}
+
+function toggleAllCams(chk) {
+  document.querySelectorAll('.cam-chk').forEach(c => c.checked = chk.checked);
+  updateCamBulkCount();
+}
+
+function selectAllCams()   { const c = document.getElementById('chk-cam-all'); if(c){c.checked=true;  toggleAllCams(c);} }
+function deselectAllCams() { const c = document.getElementById('chk-cam-all'); if(c){c.checked=false; toggleAllCams(c);} }
+
+function openBulkDeleteModal() {
+  const count = document.querySelectorAll('.cam-chk:checked').length;
+  document.getElementById('bulk-del-count').textContent = count;
+  new bootstrap.Modal(document.getElementById('bulkDeleteModal')).show();
+}
+
+async function confirmBulkDelete() {
+  const ids = [...document.querySelectorAll('.cam-chk:checked')].map(c => parseInt(c.dataset.id));
+  bootstrap.Modal.getInstance(document.getElementById('bulkDeleteModal')).hide();
+  const btn = document.getElementById('bulk-del-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Excluindo...';
+  const resp = await fetch('/api/cameras/bulk-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids })
+  });
+  const html = await resp.text();
+  document.getElementById('camera-list').innerHTML = html;
+  btn.disabled = false;
+  updateCamBulkCount();
+  showToast(`${ids.length} câmera(s) excluída(s).`);
+}
+
+// Re-inicializa toolbar após HTMX recarregar a tabela
+document.addEventListener('htmx:afterSwap', e => {
+  if (e.detail.target.id === 'camera-list') updateCamBulkCount();
+});
 
 function openDeleteModal(id, name) {
   document.getElementById('delete-name').textContent = name || `#${id}`;

@@ -276,6 +276,28 @@ async def create_camera(
     return await cameras_partial(request)
 
 
+@app.post("/api/cameras/{camera_id}/credentials", response_class=HTMLResponse)
+async def update_camera_credentials(
+    request: Request,
+    camera_id: int,
+    username: str = Form(""),
+    password: str = Form(""),
+):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("<div class='alert alert-danger'>Sem permissão</div>", status_code=403)
+    cam = Camera.get_or_none(Camera.id == camera_id)
+    if not cam:
+        return HTMLResponse("<div class='alert alert-danger'>Câmera não encontrada</div>", status_code=404)
+    cam.username = username.strip() or None
+    if password.strip():
+        fernet_key = get_vault_key(request)
+        cam.password = encrypt_password(password, fernet_key) if fernet_key else password
+    cam.updated_at = utcnow()
+    cam.save()
+    return HTMLResponse("<div class='alert alert-success py-2'><i class='bi bi-check-circle me-1'></i>Credenciais salvas!</div>")
+
+
 @app.post("/api/cameras/{camera_id}/edit", response_class=HTMLResponse)
 async def update_camera(
     request: Request,
@@ -331,6 +353,21 @@ async def delete_camera(request: Request, camera_id: int):
         return await cameras_partial(request)
     except Exception as e:
         return HTMLResponse(f"<div class='alert alert-danger font-monospace small'>Erro ao excluir: {str(e)}</div>")
+
+
+@app.post("/api/cameras/bulk-delete", response_class=HTMLResponse)
+async def bulk_delete_cameras(request: Request):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("<div class='alert alert-danger'>Sem permissão</div>", status_code=403)
+    body = await request.json()
+    ids = body.get("ids", [])
+    for cid in ids:
+        cam = Camera.get_or_none(Camera.id == cid)
+        if cam:
+            Camera.update(parent=None).where(Camera.parent == cam).execute()
+            cam.delete_instance()
+    return await cameras_partial(request)
 
 
 # ── Scanner ───────────────────────────────────────────────────────────────────
@@ -849,9 +886,43 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
                 "avg_ms": p["avg_ms"], "jitter_ms": p["jitter_ms"], "loss_pct": p["loss_pct"],
             })
 
+    def _classify(s: dict) -> str:
+        if not s["reachable"]:
+            return "offline"
+        avg = s["avg_ms"] or 0
+        jitter = s["jitter_ms"] or 0
+        loss = s["loss_pct"] or 0
+        if avg > 300 or jitter > 100 or loss >= 50:
+            return "critico"
+        if avg > 80 or jitter > 40 or loss > 0:
+            return "atencao"
+        return "normal"
+
+    stats_offline  = [s for s in network_stats if _classify(s) == "offline"]
+    stats_critico  = [s for s in network_stats if _classify(s) == "critico"]
+    stats_atencao  = [s for s in network_stats if _classify(s) == "atencao"]
+    stats_normal   = [s for s in network_stats if _classify(s) == "normal"]
+
+    # Attach per-camera warning labels to each atencao row (avoids double counting)
+    _warn_map: dict[int, list[str]] = {}
+    for iss in issues:
+        if iss.get("severity") == "warning" and iss.get("camera"):
+            cid = iss["camera"].id
+            _warn_map.setdefault(cid, []).append(iss["title"])
+    for s in stats_atencao:
+        s["cam_warnings"] = _warn_map.get(s["cam"].id, [])
+
+    # Structural warnings (no specific camera, e.g. duplicate MAC)
+    warnings_structural = [i for i in issues if i.get("severity") == "warning" and not i.get("camera")]
+
     return {
         "issues": issues,
         "network_stats": network_stats,
+        "stats_offline": stats_offline,
+        "stats_critico": stats_critico,
+        "stats_atencao": stats_atencao,
+        "stats_normal":  stats_normal,
+        "warnings_structural": warnings_structural,
         "cameras": cameras,
         "cameras_total": len(cameras),
         "online_count": sum(1 for c in cameras if c.is_online),
@@ -1258,7 +1329,11 @@ async def vault_cameras_partial(request: Request):
     fernet_key = get_vault_key(request)
     if not fernet_key:
         return HTMLResponse("<div class='alert alert-warning'>Cofre bloqueado.</div>")
-    cameras = list(Camera.select().order_by(Camera.ip_address))
+    cameras = list(
+        Camera.select()
+        .where((Camera.username.is_null(False)) | (Camera.password.is_null(False)))
+        .order_by(Camera.ip_address)
+    )
     return templates.TemplateResponse("partials/vault_camera_table.html", {
         "request": request,
         "cameras": cameras,

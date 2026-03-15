@@ -56,13 +56,27 @@
 
 <!-- Resultados -->
 <div id="results-header" class="d-none mb-2">
-  <h6 class="text-secondary"><i class="bi bi-list-check"></i> Resultados</h6>
+  <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <h6 class="text-secondary mb-0"><i class="bi bi-list-check"></i> Resultados</h6>
+    <div id="bulk-toolbar" class="d-none d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-secondary" onclick="selectAll()">
+        <i class="bi bi-check2-all me-1"></i>Selecionar tudo
+      </button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="deselectAll()">
+        <i class="bi bi-x-lg me-1"></i>Desmarcar
+      </button>
+      <button id="bulk-save-btn" class="btn btn-sm btn-success d-none" onclick="bulkSave()">
+        <i class="bi bi-floppy me-1"></i>Adicionar Selecionados (<span id="sel-count">0</span>)
+      </button>
+    </div>
+  </div>
 </div>
 <div id="scan-results-wrapper" class="d-none">
   <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead class="table-dark">
         <tr>
+          <th style="width:36px"><input type="checkbox" id="chk-all" class="form-check-input" onclick="toggleAll(this)"></th>
           <th>IP</th>
           <th>Marca</th>
           <th>MAC</th>
@@ -128,6 +142,9 @@ async function startScan() {
   foundCount = 0;
   document.getElementById('scan-results').innerHTML = '';
   document.getElementById('scan-results-wrapper').classList.add('d-none');
+  document.getElementById('bulk-toolbar').classList.add('d-none');
+  document.getElementById('bulk-save-btn').classList.add('d-none');
+  document.getElementById('chk-all').checked = false;
   document.getElementById('found-count').textContent = '0';
   document.getElementById('progress-bar').style.width = '0%';
   document.getElementById('progress-bar').classList.add('progress-bar-animated');
@@ -223,7 +240,9 @@ function addResultCard(data) {
   const ports = (data.ports || []).join(', ') || '—';
   const sc = scoreColor(data.score);
   const saveId = 'save-' + data.ip.replace(/\./g, '-');
-  
+  const rowId = 'card-' + data.ip.replace(/\./g, '-');
+  const chkId = 'chk-' + data.ip.replace(/\./g, '-');
+
   const nvrBadge = data.is_nvr ? `<br><span class="badge bg-warning text-dark mt-1"><i class="bi bi-hdd-network"></i> Gravador</span>` : '';
 
   const saveBtn = IS_ADMIN
@@ -233,8 +252,15 @@ function addResultCard(data) {
     : `<span class="badge bg-secondary">Somente ADMIN</span>`;
 
   const tr = document.createElement('tr');
-  tr.id = 'card-' + data.ip.replace(/\./g, '-');
+  tr.id = rowId;
+  tr.dataset.ip = data.ip;
+  tr.dataset.brand = data.brand;
+  tr.dataset.ports = ports;
+  tr.dataset.score = data.score;
+  tr.dataset.mac = data.mac || '';
+  tr.dataset.isNvr = data.is_nvr ? '1' : '0';
   tr.innerHTML = `
+    <td><input type="checkbox" id="${chkId}" class="form-check-input scan-chk" onchange="updateBulkCount()" ${IS_ADMIN ? '' : 'disabled'}></td>
     <td><code>${data.ip}</code></td>
     <td>${data.brand}${nvrBadge}</td>
     <td><code class="small">${data.mac || '—'}</code></td>
@@ -244,6 +270,7 @@ function addResultCard(data) {
 
   document.getElementById('scan-results').prepend(tr);
   document.getElementById('scan-results-wrapper').classList.remove('d-none');
+  document.getElementById('bulk-toolbar').classList.remove('d-none');
 }
 
 let _saveData = null;
@@ -273,16 +300,80 @@ async function confirmSave() {
   fd.append('score', score);
   fd.append('mac_address', mac);
   fd.append('name', name);
-  fd.append('is_nvr', isNvr ? 'on' : ''); // FastAPI Form boolean handling
+  fd.append('is_nvr', isNvr ? 'on' : '');
 
   const resp = await fetch('/api/cameras/save-from-scan', { method: 'POST', body: fd });
   const html = await resp.text();
   document.getElementById('save-' + ip.replace(/\./g, '-')).innerHTML = html;
+  // uncheck and disable checkbox after save
+  const chk = document.getElementById('chk-' + ip.replace(/\./g, '-'));
+  if (chk) { chk.checked = false; chk.disabled = true; }
   SAVED_IPS.add(ip);
   _saveData = null;
+  updateBulkCount();
 
   const toastName = name || ip;
   document.getElementById('saveToastMsg').textContent = `Câmera "${toastName}" salva com sucesso!`;
+  bootstrap.Toast.getOrCreateInstance(document.getElementById('saveToast')).show();
+}
+
+// ── Seleção em lote ──────────────────────────────────────────
+function updateBulkCount() {
+  const checked = document.querySelectorAll('.scan-chk:checked:not(:disabled)');
+  const btn = document.getElementById('bulk-save-btn');
+  document.getElementById('sel-count').textContent = checked.length;
+  btn.classList.toggle('d-none', checked.length === 0);
+  // sync header checkbox state
+  const all = document.querySelectorAll('.scan-chk:not(:disabled)');
+  document.getElementById('chk-all').indeterminate = checked.length > 0 && checked.length < all.length;
+  document.getElementById('chk-all').checked = all.length > 0 && checked.length === all.length;
+}
+
+function toggleAll(chk) {
+  document.querySelectorAll('.scan-chk:not(:disabled)').forEach(c => c.checked = chk.checked);
+  updateBulkCount();
+}
+
+function selectAll()   { document.getElementById('chk-all').checked = true;  toggleAll(document.getElementById('chk-all')); }
+function deselectAll() { document.getElementById('chk-all').checked = false; toggleAll(document.getElementById('chk-all')); }
+
+async function bulkSave() {
+  const rows = [...document.querySelectorAll('.scan-chk:checked:not(:disabled)')]
+    .map(chk => document.getElementById('card-' + chk.id.replace('chk-', '')))
+    .filter(Boolean);
+
+  if (!rows.length) return;
+
+  const btn = document.getElementById('bulk-save-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Salvando...';
+
+  let saved = 0;
+  for (const tr of rows) {
+    const ip = tr.dataset.ip;
+    const fd = new FormData();
+    fd.append('ip_address', ip);
+    fd.append('brand', tr.dataset.brand);
+    fd.append('open_ports_csv', tr.dataset.ports);
+    fd.append('score', tr.dataset.score);
+    fd.append('mac_address', tr.dataset.mac);
+    fd.append('name', '');
+    fd.append('is_nvr', tr.dataset.isNvr === '1' ? 'on' : '');
+
+    const resp = await fetch('/api/cameras/save-from-scan', { method: 'POST', body: fd });
+    const html = await resp.text();
+    document.getElementById('save-' + ip.replace(/\./g, '-')).innerHTML = html;
+    const chk = document.getElementById('chk-' + ip.replace(/\./g, '-'));
+    if (chk) { chk.checked = false; chk.disabled = true; }
+    SAVED_IPS.add(ip);
+    saved++;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span>Salvando ${saved}/${rows.length}...`;
+  }
+
+  btn.innerHTML = `<i class="bi bi-floppy me-1"></i>Adicionar Selecionados (<span id="sel-count">0</span>)`;
+  btn.disabled = false;
+  updateBulkCount();
+  document.getElementById('saveToastMsg').textContent = `${saved} câmera(s) adicionada(s) com sucesso!`;
   bootstrap.Toast.getOrCreateInstance(document.getElementById('saveToast')).show();
 }
 </script>

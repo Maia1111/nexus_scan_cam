@@ -75,10 +75,68 @@
 </div>
 {% endif %}
 
+<!-- Modal de credenciais -->
+<div class="modal fade" id="vaultCredModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-key me-2"></i>Credenciais</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="vault-cred-info" class="text-secondary small mb-3"></div>
+        <div id="vault-cred-result" class="mb-2"></div>
+        <div class="mb-3">
+          <label class="form-label">Usuário</label>
+          <input type="text" id="vault-cred-username" class="form-control" autocomplete="off">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Senha</label>
+          <input type="password" id="vault-cred-password" class="form-control" autocomplete="new-password">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="saveVaultCredentials()">
+          <i class="bi bi-floppy me-1"></i> Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
+let _vaultCamId = null;
+
+function openVaultCredModal(camId, camName, camIp, currentUsername) {
+  _vaultCamId = camId;
+  document.getElementById('vault-cred-info').innerHTML =
+    `<i class="bi bi-camera-video me-1"></i><strong>${camName || camIp}</strong> <code class="ms-1">${camIp}</code>`;
+  document.getElementById('vault-cred-username').value = currentUsername || '';
+  document.getElementById('vault-cred-password').value = '';
+  document.getElementById('vault-cred-result').innerHTML = '';
+  new bootstrap.Modal(document.getElementById('vaultCredModal')).show();
+}
+
+async function saveVaultCredentials() {
+  if (!_vaultCamId) return;
+  const form = new FormData();
+  form.append('username', document.getElementById('vault-cred-username').value);
+  form.append('password', document.getElementById('vault-cred-password').value);
+  const resp = await fetch(`/api/cameras/${_vaultCamId}/credentials`, { method: 'POST', body: form });
+  const html = await resp.text();
+  document.getElementById('vault-cred-result').innerHTML = html;
+  if (resp.ok) {
+    setTimeout(() => {
+      bootstrap.Modal.getInstance(document.getElementById('vaultCredModal')).hide();
+      htmx.trigger('#vault-camera-list', 'load');
+    }, 1000);
+  }
+}
+
 function filterVaultTable(query) {
   const q = query.toLowerCase();
   document.querySelectorAll('#vault-camera-list tbody tr').forEach(row => {
