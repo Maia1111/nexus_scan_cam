@@ -1508,15 +1508,12 @@ async def profile_page(request: Request):
 @app.post("/api/profile/password", response_class=HTMLResponse)
 async def profile_change_password(
     request: Request,
-    current_password: str = Form(...),
     new_password: str = Form(...),
     confirm_password: str = Form(...),
 ):
     user = get_user(request)
     if not user:
         return HTMLResponse('<div class="alert alert-danger">Não autenticado.</div>', status_code=401)
-    if not verify_password(current_password, user.password_hash):
-        return HTMLResponse('<div class="alert alert-danger">Senha atual incorreta.</div>', status_code=400)
     if len(new_password) < 6:
         return HTMLResponse('<div class="alert alert-danger">A nova senha deve ter pelo menos 6 caracteres.</div>', status_code=400)
     if new_password != confirm_password:

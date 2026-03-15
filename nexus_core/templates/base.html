@@ -283,23 +283,68 @@
   </div>
 
   <div class="sb-footer">
-    <div class="sb-user">
+    <div class="sb-user" onclick="openAccountModal()" style="cursor:pointer;" title="Alterar senha">
       <i class="bi bi-person-circle"></i>
       <div>
         <div class="name">{{ user.username }}</div>
         <div class="role">{{ user.role }}</div>
       </div>
     </div>
-    <a href="/profile" class="sb-item {{ 'active' if request.url.path == '/profile' }}">
-      <i class="bi bi-gear"></i>
-      <span>Minha Conta</span>
-    </a>
     <a href="/logout" class="sb-item" style="color:#f87171;">
       <i class="bi bi-box-arrow-right" style="color:#f87171;"></i>
       <span>Sair</span>
     </a>
   </div>
 </nav>
+
+<!-- Modal Minha Conta -->
+<div class="modal fade" id="accountModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-key me-2"></i>Alterar Senha</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="account-modal-result"></div>
+        <form id="account-pw-form">
+          <div class="mb-3">
+            <label class="form-label text-secondary">Nova senha <small>(mín. 6 caracteres)</small></label>
+            <input type="password" name="new_password" class="form-control" required autocomplete="new-password">
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">Confirmar nova senha</label>
+            <input type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="submitAccountPw()">
+          <i class="bi bi-save me-1"></i>Salvar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if user and user.role == 'ADMIN' %}
+<!-- Modal Cofre de Senhas -->
+<div class="modal fade" id="vaultModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-shield-lock me-2"></i>Cofre de Senhas</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="vault-modal-body">
+        <!-- conteúdo injetado via JS -->
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 <!-- ── Main ───────────────────────────────────────────────────── -->
@@ -312,6 +357,26 @@
   function toggleSidebar() {
     document.getElementById('sidebar').classList.toggle('show');
     document.getElementById('sidebar-overlay').classList.toggle('show');
+  }
+
+  function openAccountModal() {
+    document.getElementById('account-modal-result').innerHTML = '';
+    document.getElementById('account-pw-form').reset();
+    new bootstrap.Modal(document.getElementById('accountModal')).show();
+  }
+
+  async function submitAccountPw() {
+    const form = document.getElementById('account-pw-form');
+    const result = document.getElementById('account-modal-result');
+    const data = new FormData(form);
+    result.innerHTML = '';
+    const resp = await fetch('/api/profile/password', { method: 'POST', body: data });
+    const html = await resp.text();
+    result.innerHTML = html;
+    if (resp.ok) {
+      form.reset();
+      setTimeout(() => bootstrap.Modal.getInstance(document.getElementById('accountModal')).hide(), 1500);
+    }
   }
 </script>
 {% block scripts %}{% endblock %}
