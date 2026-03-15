@@ -1636,6 +1636,7 @@ async def admin_edit_user(
     role: str = Form(...),
     is_active: str = Form("on"),
     new_password: str = Form(""),
+    confirm_password: str = Form(""),
 ):
     user = get_user(request)
     if not user or user.role != "ADMIN":
@@ -1644,12 +1645,13 @@ async def admin_edit_user(
     if not target:
         return HTMLResponse('<div class="alert alert-danger">Usuário não encontrado.</div>', status_code=404)
     target.role = role.upper() if role.upper() in ("ADMIN", "VIEWER") else target.role
-    # Não permite desativar a própria conta
     if target.username != user.username:
         target.is_active = is_active == "on"
     if new_password:
         if len(new_password) < 6:
             return HTMLResponse('<div class="alert alert-danger">A senha deve ter pelo menos 6 caracteres.</div>', status_code=400)
+        if new_password != confirm_password:
+            return HTMLResponse('<div class="alert alert-danger">As senhas não coincidem.</div>', status_code=400)
         target.password_hash = hash_password(new_password)
     target.save()
     return await admin_users_partial(request)
