@@ -33,11 +33,15 @@ from models import (
     DB_PATH,
     ENC_PREFIX,
     User,
+    _VAULT_CHECK_KEY,
+    _VAULT_SALT_KEY,
+    _derive_fernet_key,
     create_user,
     decrypt_password,
     encrypt_password,
     ensure_default_camera_group,
     has_any_user,
+    hash_password,
     initialize_database,
     migrate_existing_passwords,
     restore_database,
@@ -1484,6 +1488,94 @@ async def vault_reveal(request: Request, camera_id: int):
         raise HTTPException(status_code=404)
     plain = decrypt_password(cam.password or "", fernet_key)
     return {"password": plain}
+
+
+# ── Profile ───────────────────────────────────────────────────────────────────
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request):
+    user = get_user(request)
+    if not user:
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("profile.html", {
+        "request": request,
+        "user": user,
+        "is_admin": user.role == "ADMIN",
+        "vault_configured": vault_is_configured(),
+        "vault_unlocked": get_vault_key(request) is not None,
+    })
+
+
+@app.post("/api/profile/password", response_class=HTMLResponse)
+async def profile_change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    user = get_user(request)
+    if not user:
+        return HTMLResponse('<div class="alert alert-danger">Não autenticado.</div>', status_code=401)
+    if not verify_password(current_password, user.password_hash):
+        return HTMLResponse('<div class="alert alert-danger">Senha atual incorreta.</div>', status_code=400)
+    if len(new_password) < 6:
+        return HTMLResponse('<div class="alert alert-danger">A nova senha deve ter pelo menos 6 caracteres.</div>', status_code=400)
+    if new_password != confirm_password:
+        return HTMLResponse('<div class="alert alert-danger">As senhas não coincidem.</div>', status_code=400)
+    User.update(password_hash=hash_password(new_password)).where(User.id == user.id).execute()
+    return HTMLResponse('<div class="alert alert-success">Senha alterada com sucesso.</div>')
+
+
+@app.post("/api/profile/vault/unlock", response_class=HTMLResponse)
+async def profile_vault_unlock(request: Request, master_password: str = Form(...)):
+    user = get_user(request)
+    if not user:
+        return HTMLResponse('<div class="alert alert-danger">Não autenticado.</div>', status_code=401)
+    if not vault_is_configured():
+        return HTMLResponse('<div class="alert alert-danger">Cofre não configurado.</div>', status_code=400)
+    fernet_key = vault_unlock(master_password)
+    if not fernet_key:
+        return HTMLResponse('<div class="alert alert-danger">Senha mestra incorreta.</div>', status_code=400)
+    request.session[_SESSION_VAULT_KEY] = base64.b64encode(fernet_key).decode()
+    return HTMLResponse('<div class="alert alert-success">Cofre desbloqueado!</div>')
+
+
+@app.post("/api/vault/change-password", response_class=HTMLResponse)
+async def vault_change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    user = get_user(request)
+    if not user:
+        return HTMLResponse('<div class="alert alert-danger">Não autenticado.</div>', status_code=401)
+    if not vault_is_configured():
+        return HTMLResponse('<div class="alert alert-danger">Cofre não configurado.</div>', status_code=400)
+    old_key = vault_unlock(current_password)
+    if not old_key:
+        return HTMLResponse('<div class="alert alert-danger">Senha atual do cofre incorreta.</div>', status_code=400)
+    if len(new_password) < 6:
+        return HTMLResponse('<div class="alert alert-danger">A nova senha deve ter pelo menos 6 caracteres.</div>', status_code=400)
+    if new_password != confirm_password:
+        return HTMLResponse('<div class="alert alert-danger">As senhas não coincidem.</div>', status_code=400)
+
+    # Gera nova chave e re-criptografa todas as senhas de câmeras
+    new_salt = os.urandom(16)
+    new_key = _derive_fernet_key(new_password, new_salt)
+    from cryptography.fernet import Fernet as _Fernet
+    new_check = _Fernet(new_key).encrypt(b"nexus-vault-ok")
+    AppConfig.insert_many([
+        {AppConfig.key: _VAULT_SALT_KEY,  AppConfig.value: base64.b64encode(new_salt).decode()},
+        {AppConfig.key: _VAULT_CHECK_KEY, AppConfig.value: new_check.decode()},
+    ]).on_conflict_replace().execute()
+    for cam in Camera.select().where(Camera.password.is_null(False)):
+        if cam.password and cam.password.startswith(ENC_PREFIX):
+            plain = decrypt_password(cam.password, old_key)
+            cam.password = encrypt_password(plain, new_key)
+            cam.save()
+    # Atualiza a chave na sessão
+    request.session[_SESSION_VAULT_KEY] = base64.b64encode(new_key).decode()
+    return HTMLResponse('<div class="alert alert-success">Senha do cofre alterada com sucesso. Todas as senhas foram re-criptografadas.</div>')
 
 
 # ── Admin Users ───────────────────────────────────────────────────────────────

@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="page-title mb-4"><i class="bi bi-person-circle"></i> Minha Conta</div>
+
+<div class="row g-4" style="max-width:680px;">
+
+  <!-- ── Alterar senha do usuário ── -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header fw-semibold">
+        <i class="bi bi-key me-2"></i>Alterar Senha
+      </div>
+      <div class="card-body">
+        <div id="pw-result"></div>
+        <form id="pw-form">
+          <div class="mb-3">
+            <label class="form-label text-secondary">Senha atual</label>
+            <input type="password" name="current_password" class="form-control" required autocomplete="current-password">
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">Nova senha <small class="text-secondary">(mín. 6 caracteres)</small></label>
+            <input type="password" name="new_password" class="form-control" required autocomplete="new-password">
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">Confirmar nova senha</label>
+            <input type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
+          </div>
+          <button type="button" class="btn btn-primary btn-sm" onclick="submitPwForm()">
+            <i class="bi bi-save me-1"></i>Salvar senha
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Cofre de senhas (somente admin) ── -->
+  {% if is_admin %}
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header fw-semibold">
+        <i class="bi bi-shield-lock me-2"></i>Cofre de Senhas
+        {% if not vault_configured %}
+        <span class="badge bg-secondary ms-2">Não configurado</span>
+        {% elif vault_unlocked %}
+        <span class="badge bg-success ms-2">Aberto</span>
+        {% else %}
+        <span class="badge bg-warning text-dark ms-2">Bloqueado</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+
+        {% if not vault_configured %}
+        <p class="text-secondary small">O cofre de senhas ainda não foi configurado. Peça ao administrador para configurá-lo em <strong>Administração → Cofre de Senhas</strong>.</p>
+
+        {% elif not vault_unlocked %}
+        <!-- Desbloquear cofre -->
+        <p class="text-secondary small mb-3">O cofre está bloqueado. Desbloqueie para poder trocar a senha mestra.</p>
+        <div id="vault-unlock-result"></div>
+        <form id="vault-unlock-form">
+          <div class="mb-3">
+            <label class="form-label text-secondary">Senha mestra atual</label>
+            <input type="password" name="master_password" class="form-control" required autocomplete="current-password">
+          </div>
+          <button type="button" class="btn btn-warning btn-sm text-dark" onclick="submitVaultUnlock()">
+            <i class="bi bi-unlock me-1"></i>Desbloquear
+          </button>
+        </form>
+
+        {% else %}
+        <!-- Trocar senha do cofre -->
+        <p class="text-secondary small mb-3">Trocar a senha mestra re-criptografa automaticamente todas as senhas de câmeras armazenadas.</p>
+        <div id="vault-pw-result"></div>
+        <form id="vault-pw-form">
+          <div class="mb-3">
+            <label class="form-label text-secondary">Senha mestra atual</label>
+            <input type="password" name="current_password" class="form-control" required autocomplete="current-password">
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">Nova senha mestra <small class="text-secondary">(mín. 6 caracteres)</small></label>
+            <input type="password" name="new_password" class="form-control" required autocomplete="new-password">
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">Confirmar nova senha mestra</label>
+            <input type="password" name="confirm_password" class="form-control" required autocomplete="new-password">
+          </div>
+          <button type="button" class="btn btn-warning btn-sm text-dark" onclick="submitVaultPwForm()">
+            <i class="bi bi-shield-check me-1"></i>Trocar senha do cofre
+          </button>
+        </form>
+        {% endif %}
+
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function submitPwForm() {
+  const form = document.getElementById('pw-form');
+  const result = document.getElementById('pw-result');
+  const data = new FormData(form);
+  result.innerHTML = '';
+  const resp = await fetch('/api/profile/password', { method: 'POST', body: data });
+  const html = await resp.text();
+  result.innerHTML = html;
+  if (resp.ok) form.reset();
+}
+
+async function submitVaultUnlock() {
+  const form = document.getElementById('vault-unlock-form');
+  const result = document.getElementById('vault-unlock-result');
+  const data = new FormData(form);
+  result.innerHTML = '';
+  const resp = await fetch('/api/profile/vault/unlock', { method: 'POST', body: data });
+  if (resp.ok) {
+    window.location.reload();
+  } else {
+    const html = await resp.text();
+    result.innerHTML = html;
+  }
+}
+
+async function submitVaultPwForm() {
+  const form = document.getElementById('vault-pw-form');
+  const result = document.getElementById('vault-pw-result');
+  const data = new FormData(form);
+  result.innerHTML = '';
+  const resp = await fetch('/api/vault/change-password', { method: 'POST', body: data });
+  const html = await resp.text();
+  result.innerHTML = html;
+  if (resp.ok) form.reset();
+}
+</script>
+{% endblock %}
