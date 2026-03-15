@@ -790,9 +790,9 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
                     "detail": (
                         f"{len(cams)} câmera(s) cadastrada(s) em {subnet_str}, mas este computador "
                         f"não possui nenhum endereço IP nessa faixa. "
-                        f"IPs locais detectados: {', '.join(local_ips)}. "
-                        f"Verifique as configurações da placa de rede."
+                        f"IPs locais detectados: {', '.join(local_ips)}."
                     ),
+                    "suggestion": f"Acesse Painel de Controle → Conexões de Rede → Propriedades da placa → TCP/IPv4 e adicione um IP secundário na faixa {subnet_str} (ex: primeiro endereço disponível da faixa).",
                 })
 
     # Verificações estáticas
@@ -802,6 +802,7 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
                 "severity": "warning", "icon": "wifi-off",
                 "type": "offline", "title": "Câmera offline",
                 "detail": f"{cam.name or cam.ip_address} ({cam.ip_address}) — última resposta em {cam.last_seen_at.strftime('%d/%m/%Y %H:%M')}",
+                "suggestion": "Verifique: 1) alimentação da câmera; 2) cabo de rede e conector; 3) porta do switch (troque de porta para testar); 4) tente pingar manualmente pelo CMD: ping " + cam.ip_address,
                 "camera": cam,
             })
     for cam in cameras:
@@ -810,6 +811,7 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
                 "severity": "info", "icon": "question-circle",
                 "type": "never_seen", "title": "Nunca respondeu",
                 "detail": f"{cam.name or cam.ip_address} ({cam.ip_address}) — cadastrada mas nunca foi vista online",
+                "suggestion": f"Confirme se o IP está correto tentando abrir http://{cam.ip_address} no navegador. Se necessário, refaça o scanner ou edite o cadastro com o IP correto.",
                 "camera": cam,
             })
     arp_map = NetworkScanner.parse_arp_table()
@@ -822,6 +824,7 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
                     "severity": "danger", "icon": "shield-exclamation",
                     "type": "ip_conflict", "title": "Conflito IP/MAC",
                     "detail": f"IP {cam.ip_address} agora responde com MAC {current} (salvo: {saved}). Possível substituição ou invasão.",
+                    "suggestion": f"Outro dispositivo pode estar usando o IP {cam.ip_address}. Acesse o switch e identifique qual porta tem o MAC {current}. Se for substituição de câmera, atualize o cadastro com o novo MAC.",
                     "camera": cam,
                 })
     mac_map: dict[str, list] = {}
@@ -834,6 +837,7 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
                 "severity": "warning", "icon": "diagram-2",
                 "type": "duplicate_mac", "title": "MAC duplicado",
                 "detail": f"MAC {mac} em {len(cams)} IPs: {', '.join(c.ip_address for c in cams)}.",
+                "suggestion": "MACs duplicados geralmente indicam cadastro incorreto. Verifique se os IPs pertencem ao mesmo equipamento físico. Se for câmera diferente, corrija o MAC no cadastro.",
                 "camera": cams[0],
             })
     for cam in cameras:
@@ -842,6 +846,7 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
                 "severity": "info", "icon": "key",
                 "type": "no_credentials", "title": "Sem credenciais",
                 "detail": f"{cam.name or cam.ip_address} ({cam.ip_address}) — sem usuário/senha cadastrado",
+                "suggestion": "Cadastre as credenciais em Administração → Cofre de Senhas para mantê-las criptografadas. Ou use o botão de chave no diagnóstico para cadastro rápido.",
                 "camera": cam,
             })
 
@@ -860,9 +865,9 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
                     "type": "dhcp", "title": "IP dinâmico detectado (DHCP)",
                     "detail": (
                         f"{cam.name or cam.ip_address}: MAC {cam.mac_address} agora está no IP {current_ip} "
-                        f"(cadastrado como {cam.ip_address}). A câmera provavelmente usa DHCP — "
-                        f"configure um IP fixo no roteador ou na câmera para evitar perda de acesso."
+                        f"(cadastrado como {cam.ip_address}). A câmera provavelmente usa DHCP."
                     ),
+                    "suggestion": f"Opção 1: Acesse a câmera e configure IP estático ({cam.ip_address} ou outro fixo). Opção 2: No roteador, crie uma reserva DHCP para o MAC {cam.mac_address} sempre receber o mesmo IP. Depois atualize o cadastro aqui se o IP mudar.",
                     "camera": cam,
                 })
 
@@ -905,7 +910,8 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
                 issues.append({
                     "severity": "danger", "icon": "slash-circle",
                     "type": "frozen", "title": "Câmera não responde (possível travamento)",
-                    "detail": f"{label} ({cam.ip_address}) marcada como online mas não respondeu a nenhum dos 4 pings TCP.",
+                    "detail": f"{label} ({cam.ip_address}) marcada como online mas não respondeu a nenhum dos 3 pings TCP.",
+                    "suggestion": "Reinicie a câmera (desconecte e reconecte a alimentação). Se o problema persistir, acesse a interface web e verifique os logs. Câmeras que travam periodicamente geralmente precisam de atualização de firmware.",
                     "camera": cam,
                 })
             elif p["reachable"]:
@@ -913,27 +919,39 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
                 if avg > 300:
                     issues.append({"severity": "danger", "icon": "speedometer", "type": "high_latency",
                         "title": "Latência crítica — possível loop de rede",
-                        "detail": f"{label}: latência média {avg:.0f}ms (>300ms indica loop ou gargalo grave).", "camera": cam})
+                        "detail": f"{label}: latência média {avg:.0f}ms. Referência: <20ms normal · 20–80ms aceitável · >80ms atenção · >300ms crítico.",
+                        "suggestion": "Latência >300ms em LAN quase sempre indica loop de switch ou broadcast storm. Verifique a topologia de rede, desative portas suspeitas e confirme que o STP (Spanning Tree) está ativo nos switches.",
+                        "camera": cam})
                 elif avg > 80:
                     issues.append({"severity": "warning", "icon": "speedometer2", "type": "high_latency",
                         "title": "Latência alta",
-                        "detail": f"{label}: latência {avg:.0f}ms (esperado <20ms em LAN).", "camera": cam})
+                        "detail": f"{label}: latência {avg:.0f}ms. Referência: <20ms normal · 20–80ms aceitável · >80ms atenção.",
+                        "suggestion": "Verifique: 1) qualidade do cabo (troque por um novo para testar); 2) troque a porta no switch; 3) verifique se o switch está sobrecarregado ou com firmware desatualizado.",
+                        "camera": cam})
                 if jitter > 100:
                     issues.append({"severity": "danger", "icon": "graph-up-arrow", "type": "jitter",
                         "title": "Instabilidade grave (jitter alto)",
-                        "detail": f"{label}: jitter {jitter:.0f}ms — provável loop de rede ou broadcast storm.", "camera": cam})
+                        "detail": f"{label}: jitter {jitter:.0f}ms. Referência: <10ms normal · 10–40ms aceitável · >40ms atenção · >100ms crítico.",
+                        "suggestion": "Jitter >100ms indica loop de rede ou broadcast storm. Verifique topologia de switch, cabos e configuração de STP. Pode também ser causado por saturação de banda.",
+                        "camera": cam})
                 elif jitter > 40:
                     issues.append({"severity": "warning", "icon": "graph-up", "type": "jitter",
                         "title": "Conexão instável",
-                        "detail": f"{label}: jitter {jitter:.0f}ms acima do normal.", "camera": cam})
+                        "detail": f"{label}: jitter {jitter:.0f}ms. Referência: <10ms normal · 10–40ms aceitável · >40ms problema.",
+                        "suggestion": "Jitter elevado geralmente indica cabo com problema intermitente ou conector oxidado. Troque o cabo ou a porta do switch. Evite Wi-Fi para câmeras de segurança.",
+                        "camera": cam})
                 if loss >= 50:
                     issues.append({"severity": "danger", "icon": "reception-0", "type": "packet_loss",
                         "title": f"Perda de pacotes grave: {loss:.0f}%",
-                        "detail": f"{label}: {loss:.0f}% dos pacotes TCP perdidos.", "camera": cam})
+                        "detail": f"{label}: {loss:.0f}% dos pacotes TCP perdidos. Qualquer perda em LAN cabeada é anormal.",
+                        "suggestion": "Perda ≥50% indica falha grave no meio físico. Substitua o cabo imediatamente. Se persistir após trocar o cabo, a porta do switch ou a própria câmera pode estar com defeito.",
+                        "camera": cam})
                 elif loss > 0:
                     issues.append({"severity": "warning", "icon": "reception-2", "type": "packet_loss",
                         "title": f"Perda de pacotes: {loss:.0f}%",
-                        "detail": f"{label}: {loss:.0f}% dos pacotes perdidos.", "camera": cam})
+                        "detail": f"{label}: {loss:.0f}% dos pacotes perdidos. Em rede cabeada LAN o esperado é 0%.",
+                        "suggestion": "Qualquer perda de pacotes em LAN cabeada indica problema físico. Troque o cabo ou a porta do switch. Verifique conectores RJ45 (crimpagem solta ou oxidada).",
+                        "camera": cam})
 
             network_stats.append({
                 "cam": cam, "reachable": p["reachable"],
