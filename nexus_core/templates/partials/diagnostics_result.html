@@ -81,7 +81,7 @@
   <div id="diag-critico" class="d-none">
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0" style="font-size:.875rem;">
-        <thead><tr><th>Câmera</th><th>IP</th><th>Latência</th><th>Jitter</th><th>Perda</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Câmera</th><th>IP</th><th>Latência</th><th>Jitter</th><th>Perda</th><th>Instabilidades</th><th></th></tr></thead>
         <tbody>
           {% for s in stats_critico %}{% set cam = s.cam %}
           <tr class="diag-row" data-name="{{ (cam.name or '') | lower }}" data-ip="{{ cam.ip_address }}">
@@ -90,7 +90,17 @@
             <td>{% if s.avg_ms is not none %}<span class="text-danger fw-bold">{{ "%.0f"|format(s.avg_ms) }}ms</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
             <td>{% if s.jitter_ms and s.jitter_ms > 0 %}<span class="text-danger">{{ "%.0f"|format(s.jitter_ms) }}ms</span>{% else %}<span class="text-secondary">0ms</span>{% endif %}</td>
             <td>{% if s.loss_pct > 0 %}<span class="text-danger">{{ "%.0f"|format(s.loss_pct) }}%</span>{% else %}<span class="text-success">0%</span>{% endif %}</td>
-            <td><span class="badge bg-danger">Crítico</span></td>
+            <td>
+              {% for w in s.cam_warnings %}
+              <span class="badge bg-danger me-1 diag-suggest"
+                    style="font-size:.7rem; cursor:help;"
+                    data-title="{{ w.title }}"
+                    data-suggestion="{{ w.suggestion }}"
+                    data-color="#ef4444">{{ w.title }}</span>
+              {% else %}
+              <span class="text-secondary small">—</span>
+              {% endfor %}
+            </td>
             <td><a href="http://{{ cam.ip_address }}" target="_blank" class="btn btn-sm btn-outline-info py-0" title="Abrir interface web"><i class="bi bi-eye"></i></a></td>
           </tr>
           {% endfor %}
@@ -136,7 +146,8 @@
               <span class="badge bg-warning text-dark me-1 diag-suggest"
                     style="font-size:.7rem; cursor:help;"
                     data-title="{{ w.title }}"
-                    data-suggestion="{{ w.suggestion }}">{{ w.title }}</span>
+                    data-suggestion="{{ w.suggestion }}"
+                    data-color="#fbbf24">{{ w.title }}</span>
               {% else %}
               <span class="text-secondary small">—</span>
               {% endfor %}

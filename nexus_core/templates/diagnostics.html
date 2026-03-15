@@ -207,8 +207,16 @@ function _showTip(badge) {
   clearTimeout(_tipTimeout);
   const suggestion = badge.dataset.suggestion;
   if (!suggestion) return;
+  const color = badge.dataset.color || '#fbbf24';
   document.getElementById('diag-tip-type').textContent = badge.dataset.title || '';
+  document.getElementById('diag-tip-type').style.color = color;
   document.getElementById('diag-tip-text').textContent = suggestion;
+  _tip.querySelector('div').style.borderColor = color;
+  _tip.querySelector('div').style.boxShadow =
+    `0 12px 48px rgba(0,0,0,.7), 0 0 0 1px ${color}26, inset 0 1px 0 rgba(255,255,255,.05)`;
+  _tip.querySelector('.bi-exclamation-circle-fill').style.color = color;
+  _tip.querySelector('.bi-lightbulb-fill').style.color = color;
+  _tip.querySelector('[style*="border-top"]').style.borderTopColor = `${color}40`;
   _tip.style.display = 'block';
   requestAnimationFrame(() => {
     _tip.style.opacity = '1';
