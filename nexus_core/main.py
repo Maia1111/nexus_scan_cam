@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
+import base64
 import sqlite3
 import httpx
 import uvicorn
@@ -25,15 +26,23 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from models import (
+    AppConfig,
     Camera,
     CameraGroup,
     DB_PATH,
+    ENC_PREFIX,
     User,
     create_user,
+    decrypt_password,
+    encrypt_password,
     ensure_default_camera_group,
     has_any_user,
     initialize_database,
+    migrate_existing_passwords,
     restore_database,
+    vault_is_configured,
+    vault_setup,
+    vault_unlock,
     verify_password,
 )
 from scanner import CameraMonitor, NetworkScanner
@@ -105,6 +114,21 @@ def get_user(request: Request) -> Optional[User]:
     if not username:
         return None
     return User.get_or_none(User.username == username, User.is_active == True)
+
+
+# ── Vault helpers ─────────────────────────────────────────────────────────────
+_SESSION_VAULT_KEY = "vault_fernet_key"
+
+
+def get_vault_key(request: Request) -> Optional[bytes]:
+    raw = request.session.get(_SESSION_VAULT_KEY)
+    return base64.b64decode(raw) if raw else None
+
+
+def vault_status(request: Request) -> str:
+    if not vault_is_configured():
+        return "not_configured"
+    return "unlocked" if get_vault_key(request) else "locked"
 
 
 # ── Auth routes ───────────────────────────────────────────────────────────────
@@ -234,11 +258,13 @@ async def create_camera(
         return HTMLResponse("<div class='alert alert-danger'>Sem permissão</div>", status_code=403)
     try:
         group = CameraGroup.get_by_id(int(group_id)) if group_id else None
+        fernet_key = get_vault_key(request)
+        final_password = encrypt_password(password, fernet_key) if (password and fernet_key) else password or None
         Camera.create(
             name=name.strip(),
             ip_address=ip_address.strip(),
             username=username.strip() or None,
-            password=password or None,
+            password=final_password,
             brand=brand.strip() or "Desconhecida",
             location=location.strip() or None,
             group=group,
@@ -275,7 +301,10 @@ async def update_camera(
         cam.name = name.strip()
         cam.ip_address = ip_address.strip()
         cam.username = username.strip() or None
-        cam.password = password or None
+        if password.strip():
+            fernet_key = get_vault_key(request)
+            cam.password = encrypt_password(password, fernet_key) if fernet_key else password
+        # se senha em branco, mantém a senha atual
         cam.brand = brand.strip() or "Desconhecida"
         cam.location = location.strip() or None
         cam.group = group
@@ -1035,16 +1064,77 @@ async def diagnostics_grouped_report_pdf(request: Request):
 
 # ── Camera snapshot viewer ─────────────────────────────────────────────────────
 _SNAPSHOT_URLS = [
+    # Intelbras VIP (baseado em Hikvision)
+    "http://{ip}/ISAPI/Streaming/channels/101/picture",
+    "http://{ip}/Streaming/channels/1/picture",
+    # Intelbras VHD/VM (baseado em Dahua)
+    "http://{ip}/cgi-bin/snapshot.cgi",
+    "http://{ip}/cgi-bin/snapshot.cgi?channel=1&subtype=0",
+    "http://{ip}/cgi-bin/mjpg/video.cgi?channel=0&subtype=1",
+    # Genéricas
     "http://{ip}/snapshot.jpg",
     "http://{ip}/snap.jpg",
     "http://{ip}/tmpfs/snap.jpg",
-    "http://{ip}/cgi-bin/snapshot.cgi",
     "http://{ip}/onvif/snapshot",
     "http://{ip}:8080/snapshot.jpg",
     "http://{ip}/cgi-bin/CGIProxy.fcgi?cmd=snapPicture2",
-    "http://{ip}/ISAPI/Streaming/channels/101/picture",
-    "http://{ip}/cgi-bin/mjpg/video.cgi?channel=0&subtype=1",
 ]
+
+
+async def _dahua_snapshot(ip: str, username: str, password: str) -> bytes | None:
+    """Login via RPC2 (Dahua/Intelbras VHD) e captura snapshot."""
+    import hashlib
+
+    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+        try:
+            # Passo 1: pegar challenge
+            r1 = await client.post(f"http://{ip}/RPC2_Login", json={
+                "method": "global.login",
+                "params": {"userName": username, "password": "", "clientType": "Web3.0"},
+                "id": 1,
+            })
+            data1 = r1.json()
+            params = data1.get("params") or {}
+            realm = params.get("realm", "")
+            random_val = params.get("random", "")
+            session = data1.get("session", "")
+            if not realm:
+                return None
+
+            # Passo 2: calcular hash Dahua
+            pwd1 = hashlib.md5(password.encode()).hexdigest().upper()
+            pwd2 = hashlib.md5(f"{username}:{realm}:{pwd1}".encode()).hexdigest()
+
+            # Passo 3: login com hash
+            r2 = await client.post(f"http://{ip}/RPC2_Login", json={
+                "method": "global.login",
+                "params": {
+                    "userName": username,
+                    "password": pwd2,
+                    "clientType": "Web3.0",
+                    "authorityType": "Default",
+                },
+                "session": session,
+                "id": 2,
+            })
+            data2 = r2.json()
+            if not data2.get("result"):
+                print(f"[Snapshot Dahua] Login falhou: {data2}")
+                return None
+
+            # Passo 4: capturar snapshot com cookie de sessão
+            cookies = {"DhWebClientSessionID": session}
+            for path in ["/cgi-bin/snapshot.cgi", "/cgi-bin/snapshot.cgi?channel=1"]:
+                r3 = await client.get(f"http://{ip}{path}", cookies=cookies)
+                ct = r3.headers.get("content-type", "")
+                if r3.status_code == 200 and "image" in ct:
+                    print(f"[Snapshot Dahua] SUCESSO: {path}")
+                    return r3.content
+
+        except Exception as e:
+            print(f"[Snapshot Dahua] Erro: {e}")
+
+    return None
 
 
 @app.get("/api/cameras/{camera_id}/snapshot")
@@ -1062,22 +1152,133 @@ async def camera_snapshot(
     if not cam:
         raise HTTPException(status_code=404)
 
+    fernet_key = get_vault_key(request)
     u = username or cam.username or ""
-    p = password or cam.password or ""
+    stored_pass = cam.password or ""
+    p = password or (decrypt_password(stored_pass, fernet_key) if fernet_key else stored_pass) or ""
     auth = (u, p) if u else None
 
-    async with httpx.AsyncClient(timeout=5.0, verify=False, follow_redirects=True) as client:
+    print(f"[Snapshot] Solicitando imagem para {cam.ip_address} (ID: {camera_id})")
+
+    # Tenta login Dahua/Intelbras VHD primeiro (RPC2 challenge-response)
+    if u:
+        data = await _dahua_snapshot(cam.ip_address, u, p)
+        if data:
+            return Response(content=data, media_type="image/jpeg")
+
+    # Fallback: URLs genéricas com Basic/Digest Auth
+    async with httpx.AsyncClient(timeout=10.0, verify=False, follow_redirects=True) as client:
         for url_tpl in _SNAPSHOT_URLS:
             url = url_tpl.format(ip=cam.ip_address)
             try:
                 resp = await client.get(url, auth=auth)
+                if resp.status_code == 401 and u:
+                    from httpx import DigestAuth
+                    resp = await client.get(url, auth=DigestAuth(u, p))
+                print(f"[Snapshot] {url} -> {resp.status_code}")
                 ct = resp.headers.get("content-type", "")
                 if resp.status_code == 200 and "image" in ct:
+                    print(f"[Snapshot] SUCESSO: {url}")
                     return Response(content=resp.content, media_type=ct)
-            except Exception:
+            except Exception as e:
+                print(f"[Snapshot] Erro em {url}: {e}")
                 continue
 
     raise HTTPException(status_code=404, detail="Snapshot não disponível para esta câmera")
+
+
+# ── Vault ─────────────────────────────────────────────────────────────────────
+@app.get("/admin/vault", response_class=HTMLResponse)
+async def vault_page(request: Request):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("admin_vault.html", {
+        "request": request,
+        "user": user,
+        "is_admin": True,
+        "vault_status": vault_status(request),
+    })
+
+
+@app.post("/api/vault/setup", response_class=HTMLResponse)
+async def vault_setup_route(
+    request: Request,
+    master_password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("<div class='alert alert-danger'>Sem permissão</div>", status_code=403)
+    if vault_is_configured():
+        return HTMLResponse("<div class='alert alert-danger'>Cofre já configurado.</div>")
+    if master_password != confirm_password:
+        return HTMLResponse("<div class='alert alert-danger'>Senhas não conferem.</div>")
+    if len(master_password) < 6:
+        return HTMLResponse("<div class='alert alert-danger'>Senha mestra deve ter ao menos 6 caracteres.</div>")
+    fernet_key = vault_setup(master_password)
+    count = migrate_existing_passwords(fernet_key)
+    request.session[_SESSION_VAULT_KEY] = base64.b64encode(fernet_key).decode()
+    return HTMLResponse(
+        f"<div class='alert alert-success'>"
+        f"<i class='bi bi-check-circle me-1'></i>Cofre configurado! {count} senha(s) criptografada(s)."
+        f"<script>setTimeout(()=>location.reload(),1500)</script></div>"
+    )
+
+
+@app.post("/api/vault/unlock", response_class=HTMLResponse)
+async def vault_unlock_route(request: Request, master_password: str = Form(...)):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("<div class='alert alert-danger'>Sem permissão</div>", status_code=403)
+    fernet_key = vault_unlock(master_password)
+    if not fernet_key:
+        return HTMLResponse("<div class='alert alert-danger'>Senha mestra incorreta.</div>")
+    request.session[_SESSION_VAULT_KEY] = base64.b64encode(fernet_key).decode()
+    return HTMLResponse(
+        "<div class='alert alert-success'><i class='bi bi-check-circle me-1'></i>Cofre desbloqueado!"
+        "<script>setTimeout(()=>location.reload(),800)</script></div>"
+    )
+
+
+@app.post("/api/vault/lock")
+async def vault_lock_route(request: Request):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        raise HTTPException(status_code=403)
+    request.session.pop(_SESSION_VAULT_KEY, None)
+    return RedirectResponse("/admin/vault", status_code=303)
+
+
+@app.get("/partials/vault/cameras", response_class=HTMLResponse)
+async def vault_cameras_partial(request: Request):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("", status_code=401)
+    fernet_key = get_vault_key(request)
+    if not fernet_key:
+        return HTMLResponse("<div class='alert alert-warning'>Cofre bloqueado.</div>")
+    cameras = list(Camera.select().order_by(Camera.ip_address))
+    return templates.TemplateResponse("partials/vault_camera_table.html", {
+        "request": request,
+        "cameras": cameras,
+        "ENC_PREFIX": ENC_PREFIX,
+    })
+
+
+@app.post("/api/vault/reveal/{camera_id}")
+async def vault_reveal(request: Request, camera_id: int):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        raise HTTPException(status_code=403)
+    fernet_key = get_vault_key(request)
+    if not fernet_key:
+        raise HTTPException(status_code=403, detail="Cofre bloqueado.")
+    cam = Camera.get_or_none(Camera.id == camera_id)
+    if not cam:
+        raise HTTPException(status_code=404)
+    plain = decrypt_password(cam.password or "", fernet_key)
+    return {"password": plain}
 
 
 # ── Admin Users ───────────────────────────────────────────────────────────────
@@ -1134,6 +1335,52 @@ async def admin_toggle_user(request: Request, user_id: int):
         target.save()
     
     return await admin_users_partial(request)
+
+
+# ── NVR / Gravadores ──────────────────────────────────────────────────────────
+@app.get("/nvr", response_class=HTMLResponse)
+async def nvr_page(request: Request):
+    user = get_user(request)
+    if not user:
+        return RedirectResponse("/login")
+    nvrs = list(Camera.select().where(Camera.is_nvr == True).order_by(Camera.name))
+    orphan_cameras = list(
+        Camera.select()
+        .where(Camera.is_nvr == False, Camera.parent.is_null(True))
+        .order_by(Camera.ip_address)
+    )
+    return templates.TemplateResponse("nvr.html", {
+        "request": request,
+        "user": user,
+        "is_admin": user.role == "ADMIN",
+        "nvrs": nvrs,
+        "orphan_cameras": orphan_cameras,
+    })
+
+
+@app.post("/api/nvr/{nvr_id}/link", response_class=HTMLResponse)
+async def nvr_link_camera(request: Request, nvr_id: int, camera_id: str = Form(...)):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("<div class='alert alert-danger'>Sem permissão</div>", status_code=403)
+    nvr = Camera.get_or_none(Camera.id == nvr_id, Camera.is_nvr == True)
+    cam = Camera.get_or_none(Camera.id == int(camera_id))
+    if nvr and cam:
+        cam.parent = nvr
+        cam.save()
+    return RedirectResponse("/nvr", status_code=303)
+
+
+@app.post("/api/nvr/unlink/{camera_id}", response_class=HTMLResponse)
+async def nvr_unlink_camera(request: Request, camera_id: int):
+    user = get_user(request)
+    if not user or user.role != "ADMIN":
+        return HTMLResponse("<div class='alert alert-danger'>Sem permissão</div>", status_code=403)
+    cam = Camera.get_or_none(Camera.id == camera_id)
+    if cam:
+        cam.parent = None
+        cam.save()
+    return RedirectResponse("/nvr", status_code=303)
 
 
 # ── Backup / Restore ──────────────────────────────────────────────────────────

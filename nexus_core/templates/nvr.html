@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div class="page-title mb-0"><i class="bi bi-hdd-network"></i> NVR / Gravadores</div>
+</div>
+
+{% if not nvrs %}
+<div class="text-center py-5 text-secondary">
+  <i class="bi bi-hdd-network" style="font-size:3rem"></i>
+  <p class="mt-3">Nenhum NVR/DVR cadastrado.<br>
+  <a href="/cameras" class="btn btn-primary btn-sm mt-2">
+    <i class="bi bi-camera-video"></i> Ir para Câmeras
+  </a></p>
+  <small class="text-secondary">Para adicionar um gravador, cadastre um dispositivo em Câmeras e marque "Este dispositivo é um Gravador (NVR/DVR)".</small>
+</div>
+
+{% else %}
+
+{% for nvr in nvrs %}
+<div class="card mb-4">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="d-flex align-items-center gap-3">
+      {% if nvr.is_online %}
+      <span class="badge bg-success"><i class="bi bi-circle-fill"></i> Online</span>
+      {% else %}
+      <span class="badge bg-danger"><i class="bi bi-circle"></i> Offline</span>
+      {% endif %}
+      <strong><i class="bi bi-hdd-network text-warning me-1"></i>{{ nvr.name or nvr.ip_address }}</strong>
+      <code class="text-secondary small">{{ nvr.ip_address }}</code>
+      <span class="badge bg-secondary">{{ nvr.brand }}</span>
+      {% if nvr.location %}
+      <small class="text-secondary"><i class="bi bi-geo-alt"></i> {{ nvr.location }}</small>
+      {% endif %}
+    </div>
+    <div class="d-flex gap-2">
+      <a href="http://{{ nvr.ip_address }}" target="_blank" class="btn btn-sm btn-outline-info" title="Abrir interface web">
+        <i class="bi bi-box-arrow-up-right"></i>
+      </a>
+    </div>
+  </div>
+
+  <div class="card-body p-0">
+    {% set linked = nvr.sub_cameras | list %}
+    {% if linked %}
+    <table class="table table-dark table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Nome</th>
+          <th>IP</th>
+          <th>Marca</th>
+          <th>Latência</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cam in linked %}
+        <tr>
+          <td>
+            {% if cam.is_online %}
+            <span class="badge bg-success"><i class="bi bi-circle-fill"></i> Online</span>
+            {% else %}
+            <span class="badge bg-danger"><i class="bi bi-circle"></i> Offline</span>
+            {% endif %}
+          </td>
+          <td>{{ cam.name or '—' }}</td>
+          <td><code>{{ cam.ip_address }}</code></td>
+          <td><span class="badge bg-secondary">{{ cam.brand }}</span></td>
+          <td>
+            {% if cam.latency_ms %}
+            <span class="text-info">{{ "%.0f"|format(cam.latency_ms) }}ms</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            <a href="http://{{ cam.ip_address }}" target="_blank"
+               class="btn btn-sm btn-outline-info me-1" title="Abrir web">
+              <i class="bi bi-eye"></i>
+            </a>
+            {% if is_admin %}
+            <form action="/api/nvr/unlink/{{ cam.id }}" method="post" class="d-inline">
+              <button class="btn btn-sm btn-outline-danger" title="Desvincular do NVR">
+                <i class="bi bi-x-lg"></i>
+              </button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="text-secondary small px-3 py-2">{{ linked | length }} câmera(s) vinculada(s)</div>
+    {% else %}
+    <div class="text-center py-4 text-secondary small">
+      <i class="bi bi-camera-video-off me-1"></i> Nenhuma câmera vinculada a este gravador.
+    </div>
+    {% endif %}
+
+    {% if is_admin and orphan_cameras %}
+    <div class="border-top p-3">
+      <form action="/api/nvr/{{ nvr.id }}/link" method="post" class="d-flex gap-2 align-items-center">
+        <select name="camera_id" class="form-select form-select-sm" style="max-width:300px" required>
+          <option value="">Vincular câmera...</option>
+          {% for cam in orphan_cameras %}
+          <option value="{{ cam.id }}">{{ cam.name or cam.ip_address }} — {{ cam.ip_address }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-sm btn-success">
+          <i class="bi bi-link-45deg"></i> Vincular
+        </button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% if orphan_cameras %}
+<div class="card mt-2 border-secondary">
+  <div class="card-header text-secondary">
+    <i class="bi bi-camera-video me-1"></i> Câmeras sem gravador vinculado ({{ orphan_cameras | length }})
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-dark table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Nome</th>
+          <th>IP</th>
+          <th>Marca</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cam in orphan_cameras %}
+        <tr>
+          <td>
+            {% if cam.is_online %}
+            <span class="badge bg-success"><i class="bi bi-circle-fill"></i> Online</span>
+            {% else %}
+            <span class="badge bg-danger"><i class="bi bi-circle"></i> Offline</span>
+            {% endif %}
+          </td>
+          <td>{{ cam.name or '—' }}</td>
+          <td><code>{{ cam.ip_address }}</code></td>
+          <td><span class="badge bg-secondary">{{ cam.brand }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endif %}
+
+{% endblock %}

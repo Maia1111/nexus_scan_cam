@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import base64
+import os
 from datetime import datetime
 from pathlib import Path
 
 import bcrypt
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from peewee import (
     AutoField,
     BlobField,
@@ -74,6 +79,85 @@ class Camera(BaseModel):
     updated_at = DateTimeField(default=datetime.utcnow)
 
 
+class AppConfig(BaseModel):
+    key   = CharField(primary_key=True)
+    value = CharField(default="")
+
+
+# ── Vault / Criptografia de senhas de câmeras ─────────────────────────────────
+ENC_PREFIX       = "ENC:"
+_VAULT_SALT_KEY  = "vault_salt"
+_VAULT_CHECK_KEY = "vault_check"
+_PBKDF2_ITERS    = 480_000
+
+
+def _derive_fernet_key(master_password: str, salt: bytes) -> bytes:
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=_PBKDF2_ITERS,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(master_password.encode("utf-8")))
+
+
+def vault_is_configured() -> bool:
+    return AppConfig.get_or_none(AppConfig.key == _VAULT_SALT_KEY) is not None
+
+
+def vault_setup(master_password: str) -> bytes:
+    """Configura o vault. Retorna a chave Fernet para armazenar na sessão."""
+    salt = os.urandom(16)
+    fernet_key = _derive_fernet_key(master_password, salt)
+    check_token = Fernet(fernet_key).encrypt(b"nexus-vault-ok")
+    AppConfig.insert_many([
+        {AppConfig.key: _VAULT_SALT_KEY,  AppConfig.value: base64.b64encode(salt).decode()},
+        {AppConfig.key: _VAULT_CHECK_KEY, AppConfig.value: check_token.decode()},
+    ]).on_conflict_replace().execute()
+    return fernet_key
+
+
+def vault_unlock(master_password: str) -> bytes | None:
+    """Tenta desbloquear. Retorna chave Fernet ou None se senha incorreta."""
+    salt_row  = AppConfig.get_or_none(AppConfig.key == _VAULT_SALT_KEY)
+    check_row = AppConfig.get_or_none(AppConfig.key == _VAULT_CHECK_KEY)
+    if not salt_row or not check_row:
+        return None
+    salt = base64.b64decode(salt_row.value)
+    fernet_key = _derive_fernet_key(master_password, salt)
+    try:
+        Fernet(fernet_key).decrypt(check_row.value.encode())
+        return fernet_key
+    except Exception:
+        return None
+
+
+def encrypt_password(plain: str, fernet_key: bytes) -> str:
+    if not plain or plain.startswith(ENC_PREFIX):
+        return plain
+    return ENC_PREFIX + Fernet(fernet_key).encrypt(plain.encode("utf-8")).decode()
+
+
+def decrypt_password(stored: str, fernet_key: bytes) -> str:
+    if not stored or not stored.startswith(ENC_PREFIX):
+        return stored or ""
+    try:
+        return Fernet(fernet_key).decrypt(stored[len(ENC_PREFIX):].encode()).decode("utf-8")
+    except Exception:
+        return ""
+
+
+def migrate_existing_passwords(fernet_key: bytes) -> int:
+    """Criptografa senhas em texto puro já existentes. Retorna total migrado."""
+    count = 0
+    for cam in Camera.select().where(Camera.password.is_null(False)):
+        if cam.password and not cam.password.startswith(ENC_PREFIX):
+            cam.password = encrypt_password(cam.password, fernet_key)
+            cam.save()
+            count += 1
+    return count
+
+
 def hash_password(plain_password: str) -> bytes:
     if not plain_password:
         raise ValueError("Senha não pode ser vazia.")
@@ -103,7 +187,7 @@ def create_user(username: str, plain_password: str, role: str = "VIEWER") -> Use
 
 def initialize_database() -> None:
     database.connect(reuse_if_open=True)
-    database.create_tables([User, CameraGroup, Camera], safe=True)
+    database.create_tables([User, CameraGroup, Camera, AppConfig], safe=True)
     ensure_schema_migrations()
 
 

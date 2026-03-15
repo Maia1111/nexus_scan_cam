@@ -48,15 +48,10 @@
             <i class="bi bi-diagram-3"></i>
           </button>
           <!-- Ver câmera -->
-          <button class="btn btn-sm btn-outline-info me-1"
-                  data-id="{{ cam.id }}"
-                  data-ip="{{ cam.ip_address }}"
-                  data-name="{{ cam.name or cam.ip_address | e }}"
-                  data-username="{{ cam.username or '' | e }}"
-                  data-password="{{ cam.password or '' | e }}"
-                  onclick="openViewModal(this)" title="Ver câmera">
+          <a class="btn btn-sm btn-outline-info me-1"
+             href="http://{{ cam.ip_address }}" target="_blank" title="Abrir interface web da câmera">
             <i class="bi bi-eye"></i>
-          </button>
+          </a>
           {% if is_admin %}
           <!-- Editar -->
           <button class="btn btn-sm btn-outline-primary me-1"

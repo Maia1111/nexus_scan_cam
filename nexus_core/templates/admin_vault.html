@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div class="page-title mb-0"><i class="bi bi-shield-lock"></i> Cofre de Senhas</div>
+</div>
+
+{% if vault_status == 'not_configured' %}
+<div class="card" style="max-width:480px">
+  <div class="card-body">
+    <h5 class="card-title"><i class="bi bi-lock text-warning me-1"></i> Configurar Cofre</h5>
+    <p class="text-secondary small mb-3">
+      Defina uma senha mestra <strong>separada</strong> da sua senha de login.<br>
+      As senhas das câmeras serão criptografadas com ela.<br>
+      <span class="text-danger">Atenção: se esquecer a senha mestra, não será possível recuperar as senhas.</span>
+    </p>
+    <div id="vault-result" class="mb-2"></div>
+    <form hx-post="/api/vault/setup" hx-target="#vault-result">
+      <div class="mb-3">
+        <label class="form-label text-secondary">Senha Mestra</label>
+        <input type="password" name="master_password" class="form-control" placeholder="Mínimo 6 caracteres" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label text-secondary">Confirmar Senha Mestra</label>
+        <input type="password" name="confirm_password" class="form-control" required>
+      </div>
+      <button class="btn btn-primary">
+        <i class="bi bi-shield-lock me-1"></i> Configurar e Criptografar Senhas
+      </button>
+    </form>
+  </div>
+</div>
+
+{% elif vault_status == 'locked' %}
+<div class="card" style="max-width:400px">
+  <div class="card-body text-center py-5">
+    <i class="bi bi-shield-lock-fill text-warning" style="font-size:3rem"></i>
+    <h5 class="mt-3 mb-1">Cofre Bloqueado</h5>
+    <p class="text-secondary small mb-4">Digite a senha mestra para acessar as credenciais.</p>
+    <div id="vault-result" class="mb-3"></div>
+    <form hx-post="/api/vault/unlock" hx-target="#vault-result">
+      <input type="password" name="master_password" class="form-control mb-3 text-center"
+             placeholder="Senha mestra" autofocus>
+      <button class="btn btn-warning px-4">
+        <i class="bi bi-unlock me-1"></i> Desbloquear
+      </button>
+    </form>
+  </div>
+</div>
+
+{% else %}
+<div class="d-flex align-items-center gap-3 mb-4">
+  <span class="badge bg-success fs-6 px-3 py-2">
+    <i class="bi bi-shield-check me-1"></i> Cofre Aberto
+  </span>
+  <form action="/api/vault/lock" method="post">
+    <button class="btn btn-sm btn-outline-warning">
+      <i class="bi bi-lock me-1"></i> Bloquear Cofre
+    </button>
+  </form>
+</div>
+
+<div class="mb-3" style="max-width:360px">
+  <input type="text" id="vault-search" class="form-control"
+         placeholder="Buscar por IP ou nome..."
+         oninput="filterVaultTable(this.value)">
+</div>
+
+<div id="vault-camera-list"
+     hx-get="/partials/vault/cameras"
+     hx-trigger="load">
+  <div class="text-center py-5 text-secondary">
+    <div class="spinner-border spinner-border-sm me-2"></div> Carregando...
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterVaultTable(query) {
+  const q = query.toLowerCase();
+  document.querySelectorAll('#vault-camera-list tbody tr').forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+
+async function revealPassword(camId, btn) {
+  const span = document.getElementById('pass-' + camId);
+  if (span.dataset.revealed === '1') {
+    span.textContent = '••••••••';
+    span.dataset.revealed = '0';
+    btn.querySelector('i').className = 'bi bi-eye';
+    return;
+  }
+  const resp = await fetch('/api/vault/reveal/' + camId, { method: 'POST' });
+  if (!resp.ok) {
+    alert('Falha ao revelar senha. Verifique se o cofre está desbloqueado.');
+    return;
+  }
+  const data = await resp.json();
+  span.textContent = data.password || '(sem senha)';
+  span.dataset.revealed = '1';
+  btn.querySelector('i').className = 'bi bi-eye-slash';
+}
+</script>
+{% endblock %}
