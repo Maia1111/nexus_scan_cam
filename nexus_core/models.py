@@ -64,6 +64,7 @@ class Camera(BaseModel):
     username = CharField(null=True)
     password = CharField(null=True)
     brand = CharField(default="Desconhecida", index=True)
+    model = CharField(default="", null=True)
     ip_address = CharField(unique=True, index=True)
     mac_address = CharField(null=True, index=True)
     location = CharField(null=True)
@@ -215,6 +216,9 @@ def ensure_schema_migrations() -> None:
 
     if "password" not in camera_columns:
         database.execute_sql("ALTER TABLE camera ADD COLUMN password VARCHAR(255)")
+
+    if "model" not in camera_columns:
+        database.execute_sql("ALTER TABLE camera ADD COLUMN model VARCHAR(255) NOT NULL DEFAULT ''")
 
     if "is_nvr" not in camera_columns:
         database.execute_sql("ALTER TABLE camera ADD COLUMN is_nvr BOOLEAN NOT NULL DEFAULT 0")

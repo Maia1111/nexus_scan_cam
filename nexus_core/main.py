@@ -485,6 +485,7 @@ async def start_scan(request: Request, network: str = Form(...)):
                     "ip": r.ip,
                     "mac": r.mac,
                     "brand": r.brand,
+                    "model": r.model,
                     "ports": r.open_ports,
                     "score": r.score,
                     "is_nvr": r.is_nvr,
@@ -539,6 +540,7 @@ async def save_from_scan(
     request: Request,
     ip_address: str = Form(...),
     brand: str = Form(""),
+    model: str = Form(""),
     open_ports_csv: str = Form(""),
     score: int = Form(0),
     mac_address: str = Form(""),
@@ -555,6 +557,7 @@ async def save_from_scan(
         name=name.strip(),
         ip_address=ip_address,
         brand=brand or "Desconhecida",
+        model=model.strip(),
         open_ports_csv=open_ports_csv,
         score=score,
         mac_address=mac_address or None,
@@ -764,7 +767,17 @@ async def remove_camera_from_group(request: Request, group_id: int, camera_id: i
 
 # ── Diagnostics helpers ───────────────────────────────────────────────────────
 def _get_local_ips() -> list[str]:
-    """Retorna todos os IPs IPv4 da máquina, excluindo loopback."""
+    """Retorna todos os IPs IPv4 da máquina, excluindo loopback (usa psutil para máscara real)."""
+    try:
+        import psutil
+        return [
+            addr.address
+            for addrs in psutil.net_if_addrs().values()
+            for addr in addrs
+            if addr.family == socket.AF_INET and not addr.address.startswith("127.")
+        ]
+    except Exception:
+        pass
     try:
         hostname = socket.gethostname()
         return list({
@@ -792,15 +805,47 @@ async def _tcp_ping_once(ip: str, port: int, timeout: float) -> float | None:
         return None
 
 
+async def _ping_camera(ip: str, port: int, count: int = 3, timeout: float = 1.0) -> dict:
+    """Tenta ICMP ping via icmplib; cai em TCP se não disponível.
+
+    ICMP é mais preciso (não depende de portas abertas) e o jitter medido
+    é temporal real (pings distribuídos com interval=0.2s).
+    """
+    try:
+        from icmplib import async_ping
+        host = await async_ping(ip, count=count, interval=0.2, timeout=timeout, privileged=False)
+        return {
+            "reachable": host.is_alive,
+            "avg_ms": host.avg_rtt if host.is_alive else None,
+            "max_ms": host.max_rtt if host.is_alive else None,
+            "min_ms": host.min_rtt if host.is_alive else None,
+            "jitter_ms": host.jitter if host.is_alive else 0.0,
+            "loss_pct": host.packet_loss * 100,
+        }
+    except Exception:
+        return await _tcp_ping_multi(ip, port, count=count, timeout=timeout)
+
+
 async def _tcp_ping_multi(ip: str, port: int, count: int = 3, timeout: float = 1.0) -> dict:
-    """Pinga via TCP `count` vezes em paralelo e retorna métricas de latência/perda."""
-    samples: list[float | None] = await asyncio.gather(
-        *[_tcp_ping_once(ip, port, timeout) for _ in range(count)]
-    )
+    """Pinga via TCP `count` vezes sequencialmente (intervalo 200ms) e retorna métricas.
+
+    Pings sequenciais medem jitter real de rede — paralelos criariam variância artificial
+    por concorrência de TCP na câmera, inflando o jitter e gerando scores "Regular" falsos.
+    """
+    samples: list[float | None] = []
+    for i in range(count):
+        if i > 0:
+            await asyncio.sleep(0.2)
+        samples.append(await _tcp_ping_once(ip, port, timeout))
     ok = [s for s in samples if s is not None]
     fail = len(samples) - len(ok)
     avg = sum(ok) / len(ok) if ok else None
-    jitter = (max(ok) - min(ok)) if len(ok) > 1 else 0.0
+    if len(ok) > 1:
+        mean = avg
+        variance = sum((s - mean) ** 2 for s in ok) / len(ok)
+        jitter = variance ** 0.5
+    else:
+        jitter = 0.0
     return {
         "reachable": len(ok) > 0,
         "avg_ms": avg,
@@ -960,7 +1005,7 @@ async def _collect_diagnostics(group_id: Optional[int] = None) -> dict:
 
         async def _ping_with_sem(cam):
             async with sem:
-                return await _tcp_ping_multi(cam.ip_address, _get_port(cam))
+                return await _ping_camera(cam.ip_address, _get_port(cam))
 
         ping_results = await asyncio.gather(*[_ping_with_sem(cam) for cam in cameras])
         for cam, p in zip(cameras, ping_results):

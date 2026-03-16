@@ -237,5 +237,26 @@ document.addEventListener('mouseover', e => {
 document.addEventListener('mouseout', e => {
   if (e.target.closest('.diag-suggest')) _hideTip();
 });
+
+// ── Tooltip de qualidade (.q-wrap) ───────────────────────────────────────────
+// O partial é carregado via innerHTML (fetch), então scripts do partial não
+// executam. O listener fica aqui, no documento principal, e funciona para
+// qualquer .q-wrap presente ou futuro (event delegation).
+document.addEventListener('mouseover', e => {
+  const wrap = e.target.closest('.q-wrap');
+  if (!wrap) return;
+  const tip = wrap.querySelector('.q-tip');
+  if (!tip) return;
+  const r    = wrap.getBoundingClientRect();
+  const tipW = tip.offsetWidth  || 260;
+  const tipH = tip.offsetHeight || 300;
+  let left = r.left - tipW - 12;
+  if (left < 8) left = r.right + 12;
+  let top = r.top + r.height / 2 - tipH * 0.4;
+  if (top < 8) top = 8;
+  if (top + tipH > window.innerHeight - 8) top = window.innerHeight - tipH - 8;
+  tip.style.left = left + 'px';
+  tip.style.top  = top  + 'px';
+});
 </script>
 {% endblock %}

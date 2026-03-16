@@ -199,6 +199,37 @@ async function removeCameraFromGroup(groupId, cameraId) {
   document.getElementById('groups-list').innerHTML = html;
 }
 
+function filterGroupCams(value) {
+  const q = value.trim().toLowerCase();
+  const cards = document.querySelectorAll('#groups-list .card');
+  let totalVisible = 0;
+
+  cards.forEach(card => {
+    const rows = card.querySelectorAll('tbody tr[data-cam-ip]');
+
+    if (!rows.length) {
+      // Grupo sem câmeras: esconde ao buscar, mostra quando limpa
+      card.style.display = q ? 'none' : '';
+      return;
+    }
+
+    let matches = 0;
+    rows.forEach(row => {
+      const show = !q
+        || (row.dataset.camName || '').includes(q)
+        || (row.dataset.camIp   || '').includes(q);
+      row.style.display = show ? '' : 'none';
+      if (show) matches++;
+    });
+
+    card.style.display = (q && matches === 0) ? 'none' : '';
+    if (card.style.display !== 'none') totalVisible++;
+  });
+
+  const empty = document.getElementById('group-search-empty');
+  if (empty) empty.style.display = (q && totalVisible === 0) ? '' : 'none';
+}
+
 function openDeleteGroup(id, name) {
   document.getElementById('del-group-name').textContent = name;
   const btn = document.getElementById('del-group-confirm-btn');

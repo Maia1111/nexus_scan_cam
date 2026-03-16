@@ -1,4 +1,222 @@
-<!-- ── Resumo ──────────────────────────────────────────────────── -->
+<!-- ── Estilos da barra de qualidade ────────────────────────────────────────── -->
+<style>
+.q-wrap {
+  position: relative;
+  cursor: help;
+  min-width: 110px;
+}
+/* Tooltip: position:fixed escapa overflow do table-responsive.
+   CSS :hover cuida do show/hide. JS só corrige a posição. */
+.q-tip {
+  display: none;
+  position: fixed;
+  left: -9999px;   /* off-screen até JS posicionar */
+  top:  -9999px;
+  background: #12121e;
+  border: 1px solid #2e2e45;
+  border-radius: 10px;
+  padding: 11px 14px;
+  min-width: 230px;
+  max-width: 300px;
+  z-index: 9999;
+  box-shadow: 0 6px 24px rgba(0,0,0,.65);
+  pointer-events: none;
+}
+/* CSS puro garante que o tooltip apareça — independente de JS */
+.q-wrap:hover .q-tip { display: block; }
+
+.q-tip-title {
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #475569;
+  margin-bottom: 6px;
+}
+.q-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid #1e1e30;
+}
+.q-row:last-of-type { border-bottom: none; }
+.q-metric { color: #94a3b8; font-size: .79rem; }
+.q-val     { font-weight: 700; font-size: .81rem; }
+.q-ok   .q-val { color: #22c55e; }
+.q-warn .q-val { color: #fbbf24; }
+.q-bad  .q-val { color: #ef4444; }
+.q-hint { font-size: .71rem; color: #64748b; padding: 2px 0 5px 0; line-height: 1.35; }
+.q-extra { font-size: .74rem; color: #fbbf24; padding-top: 5px; margin-top: 3px; border-top: 1px solid #1e1e30; }
+/* Bloco "Por que Regular/Ruim?" */
+.q-diag {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: #0f0f1a;
+  border-left: 3px solid #fbbf24;
+}
+.q-diag.q-diag-bad { border-left-color: #ef4444; }
+.q-diag-title {
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #fbbf24;
+  margin-bottom: 5px;
+}
+.q-diag-bad .q-diag-title { color: #ef4444; }
+.q-diag-item {
+  font-size: .74rem;
+  color: #94a3b8;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.q-diag-item:last-child { margin-bottom: 0; }
+.q-diag-label { font-weight: 700; color: #cbd5e1; }
+.q-diag-action {
+  font-size: .70rem;
+  color: #60a5fa;
+  margin-top: 2px;
+  padding-left: 4px;
+  border-left: 2px solid #1e3a5f;
+}
+</style>
+
+<!-- ── Macro: barra de qualidade ──────────────────────────────────────────── -->
+{% macro quality_cell(s, offline=false) %}
+{% if offline or s.avg_ms is none %}
+  {% set score = 0 %}{% set color = '#ef4444' %}{% set label = 'Offline' %}
+  {% set avg = 0 %}{% set jitter = 0 %}{% set loss = 100.0 %}
+{% else %}
+  {% set avg    = s.avg_ms    | float %}
+  {% set jitter = s.jitter_ms | float if s.jitter_ms else 0.0 %}
+  {% set loss   = s.loss_pct  | float if s.loss_pct  else 0.0 %}
+  {# pontuação: latência 0-40 | jitter 0-30 | perda 0-30 #}
+  {% set lat_pts = 40 if avg < 20 else (30 if avg < 80 else (15 if avg < 300 else 0)) %}
+  {% set jit_pts = 30 if jitter < 10 else (20 if jitter < 40 else (10 if jitter < 100 else 0)) %}
+  {% set los_pts = 30 if loss == 0 else (10 if loss < 50 else 0) %}
+  {% set score = lat_pts + jit_pts + los_pts %}
+  {% set color = '#22c55e' if score >= 80 else ('#fbbf24' if score >= 50 else '#ef4444') %}
+  {% set label = 'Ótimo' if score >= 90 else ('Bom' if score >= 80 else ('Regular' if score >= 50 else 'Ruim')) %}
+{% endif %}
+
+{# classes por valor #}
+{% set lat_cls = 'q-ok' if avg < 20 else ('q-warn' if avg < 300 else 'q-bad') %}
+{% set jit_cls = 'q-ok' if jitter < 10 else ('q-warn' if jitter < 100 else 'q-bad') %}
+{% set los_cls = 'q-ok' if loss == 0 else ('q-warn' if loss < 50 else 'q-bad') %}
+
+{# dicas por valor #}
+{% if avg >= 300 %}{% set lat_tip = 'Latência crítica — verifique loop de switch ou broadcast storm. Confirme que STP está ativo.' %}
+{% elif avg >= 80 %}{% set lat_tip = 'Troque o cabo e a porta do switch para testar. Verifique se o switch está sobrecarregado.' %}
+{% elif avg >= 20 %}{% set lat_tip = 'Latência aceitável, mas acima do ideal para LAN. Monitore se aumentar.' %}
+{% else %}{% set lat_tip = '' %}{% endif %}
+
+{% if jitter >= 100 %}{% set jit_tip = 'Instabilidade grave — provável loop de rede ou broadcast storm.' %}
+{% elif jitter >= 40 %}{% set jit_tip = 'Cabo com problema intermitente ou conector RJ45 oxidado. Troque o cabo.' %}
+{% elif jitter >= 10 %}{% set jit_tip = 'Leve variação. Considere trocar o cabo se piorar.' %}
+{% else %}{% set jit_tip = '' %}{% endif %}
+
+{% if loss >= 50 %}{% set los_tip = 'Falha grave no meio físico — substitua o cabo imediatamente.' %}
+{% elif loss > 0 %}{% set los_tip = 'Qualquer perda em LAN cabeada é anormal — troque o cabo ou porta do switch.' %}
+{% else %}{% set los_tip = '' %}{% endif %}
+
+<div class="q-wrap">
+  {# barra #}
+  <div style="display:flex; align-items:center; gap:5px;">
+    <div style="flex:1; height:7px; background:#1e1e2e; border-radius:4px; overflow:hidden;">
+      <div style="width:{{ score }}%; height:100%; background:{{ color }}; border-radius:4px;"></div>
+    </div>
+    <span style="font-size:.72rem; color:{{ color }}; font-weight:700; min-width:28px; text-align:right;">{{ score }}%</span>
+  </div>
+  <div style="font-size:.68rem; color:#64748b; margin-top:1px;">{{ label }}</div>
+
+  {# tooltip #}
+  <div class="q-tip">
+    <div class="q-tip-title">Qualidade de Rede</div>
+    {% if offline or s.avg_ms is none %}
+    <div class="q-row q-bad"><span class="q-metric">Sem resposta</span><span class="q-val">Offline</span></div>
+    <div class="q-hint">Câmera não respondeu a nenhum ping.</div>
+    {% else %}
+    <div class="q-row {{ lat_cls }}">
+      <span class="q-metric">Latência</span>
+      <span class="q-val">{{ "%.0f"|format(avg) }}ms</span>
+    </div>
+    {% if lat_tip %}<div class="q-hint">{{ lat_tip }}</div>{% endif %}
+    <div class="q-row {{ jit_cls }}">
+      <span class="q-metric">Jitter</span>
+      <span class="q-val">{{ "%.0f"|format(jitter) }}ms</span>
+    </div>
+    {% if jit_tip %}<div class="q-hint">{{ jit_tip }}</div>{% endif %}
+    <div class="q-row {{ los_cls }}">
+      <span class="q-metric">Perda</span>
+      <span class="q-val">{{ "%.0f"|format(loss) }}%</span>
+    </div>
+    {% if los_tip %}<div class="q-hint">{{ los_tip }}</div>{% endif %}
+    {% endif %}
+    {% if s.cam_warnings is defined %}
+      {% for w in s.cam_warnings %}
+      <div class="q-extra">⚡ {{ w.title }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {# Bloco diagnóstico para Regular e Ruim — mostra TODOS os parâmetros não-máximos #}
+    {% if label in ('Regular', 'Ruim') and not (offline or s.avg_ms is none) %}
+    <div class="q-diag{% if label == 'Ruim' %} q-diag-bad{% endif %}">
+      <div class="q-diag-title">Por que {{ label }}? ({{ score }}/100pts)</div>
+
+      {# Latência: max 40pts — mostra qualquer desvio do ideal #}
+      {% if lat_pts < 40 %}
+      <div class="q-diag-item">
+        <span class="q-diag-label">Latência {{ "%.0f"|format(avg) }}ms</span>
+        <span style="color:#ef4444; font-size:.68rem;"> -{{ 40 - lat_pts }}pts</span>
+        {% if avg >= 300 %} — critico
+        {% elif avg >= 80 %} — alta (ideal &lt;80ms)
+        {% else %} — ok, mas acima do ideal (&lt;20ms){% endif %}
+        <div class="q-diag-action">
+          {% if avg >= 300 %}Verifique loop de switch; confirme STP ativo.
+          {% elif avg >= 80 %}Troque o cabo e teste outra porta no switch.
+          {% else %}Monitorar. Se piorar, verifique o cabo.{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# Jitter: max 30pts — qualquer valor acima de 0ms reduz a nota #}
+      {% if jit_pts < 30 %}
+      <div class="q-diag-item">
+        <span class="q-diag-label">Jitter {{ "%.0f"|format(jitter) }}ms</span>
+        <span style="color:#ef4444; font-size:.68rem;"> -{{ 30 - jit_pts }}pts</span>
+        {% if jitter >= 100 %} — critico
+        {% elif jitter >= 40 %} — instavel (ideal &lt;10ms)
+        {% else %} — leve variacao (ideal &lt;10ms){% endif %}
+        <div class="q-diag-action">
+          {% if jitter >= 100 %}Loop de rede ou broadcast storm.
+          {% elif jitter >= 40 %}Cabo com defeito ou conector RJ45 oxidado.
+          {% else %}Monitorar. Se piorar, troque o cabo.{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {# Perda: max 30pts #}
+      {% if los_pts < 30 %}
+      <div class="q-diag-item">
+        <span class="q-diag-label">Perda {{ "%.0f"|format(loss) }}%</span>
+        <span style="color:#ef4444; font-size:.68rem;"> -{{ 30 - los_pts }}pts</span>
+        (anormal em LAN — esperado 0%)
+        <div class="q-diag-action">
+          {% if loss >= 50 %}Falha grave: substitua o cabo imediatamente.
+          {% else %}Troque o cabo ou a porta do switch.{% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endmacro %}
+
+<!-- ── Resumo ──────────────────────────────────────────────────────────────── -->
 <div class="row g-3 mb-4">
   <div class="col-4">
     <div class="card text-center p-3">
@@ -46,16 +264,13 @@
   <div id="diag-offline" class="d-none">
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0" style="font-size:.875rem;">
-        <thead><tr><th>Câmera</th><th>IP</th><th>Latência</th><th>Jitter</th><th>Perda</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Câmera</th><th>IP</th><th>Qualidade</th><th></th></tr></thead>
         <tbody>
           {% for s in stats_offline %}{% set cam = s.cam %}
           <tr class="diag-row" data-name="{{ (cam.name or '') | lower }}" data-ip="{{ cam.ip_address }}">
             <td>{{ cam.name or '—' }}</td>
             <td><code>{{ cam.ip_address }}</code></td>
-            <td><span class="text-secondary">—</span></td>
-            <td><span class="text-secondary">—</span></td>
-            <td><span class="text-danger">100%</span></td>
-            <td><span class="badge bg-danger">Sem resposta</span></td>
+            <td>{{ quality_cell(s, offline=true) }}</td>
             <td><a href="http://{{ cam.ip_address }}" target="_blank" class="btn btn-sm btn-outline-info py-0" title="Abrir interface web"><i class="bi bi-eye"></i></a></td>
           </tr>
           {% endfor %}
@@ -66,7 +281,7 @@
 </div>
 {% endif %}
 
-<!-- Crítico (rede) -->
+<!-- Crítico -->
 {% if stats_critico %}
 <div class="card mb-3">
   <div class="card-header d-flex justify-content-between align-items-center"
@@ -81,26 +296,13 @@
   <div id="diag-critico" class="d-none">
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0" style="font-size:.875rem;">
-        <thead><tr><th>Câmera</th><th>IP</th><th>Latência</th><th>Jitter</th><th>Perda</th><th>Instabilidades</th><th></th></tr></thead>
+        <thead><tr><th>Câmera</th><th>IP</th><th>Qualidade</th><th></th></tr></thead>
         <tbody>
           {% for s in stats_critico %}{% set cam = s.cam %}
           <tr class="diag-row" data-name="{{ (cam.name or '') | lower }}" data-ip="{{ cam.ip_address }}">
             <td>{{ cam.name or '—' }}</td>
             <td><code>{{ cam.ip_address }}</code></td>
-            <td>{% if s.avg_ms is not none %}<span class="text-danger fw-bold">{{ "%.0f"|format(s.avg_ms) }}ms</span>{% else %}<span class="text-secondary">—</span>{% endif %}</td>
-            <td>{% if s.jitter_ms and s.jitter_ms > 0 %}<span class="text-danger">{{ "%.0f"|format(s.jitter_ms) }}ms</span>{% else %}<span class="text-secondary">0ms</span>{% endif %}</td>
-            <td>{% if s.loss_pct > 0 %}<span class="text-danger">{{ "%.0f"|format(s.loss_pct) }}%</span>{% else %}<span class="text-success">0%</span>{% endif %}</td>
-            <td>
-              {% for w in s.cam_warnings %}
-              <span class="badge bg-danger me-1 diag-suggest"
-                    style="font-size:.7rem; cursor:help;"
-                    data-title="{{ w.title }}"
-                    data-suggestion="{{ w.suggestion }}"
-                    data-color="#ef4444">{{ w.title }}</span>
-              {% else %}
-              <span class="text-secondary small">—</span>
-              {% endfor %}
-            </td>
+            <td>{{ quality_cell(s) }}</td>
             <td><a href="http://{{ cam.ip_address }}" target="_blank" class="btn btn-sm btn-outline-info py-0" title="Abrir interface web"><i class="bi bi-eye"></i></a></td>
           </tr>
           {% endfor %}
@@ -111,7 +313,7 @@
 </div>
 {% endif %}
 
-<!-- Atenção (rede + problemas estruturais) — UNIFICADO -->
+<!-- Atenção -->
 {% set atencao_total = (stats_atencao | length) + (warnings_structural | length) %}
 {% if atencao_total > 0 %}
 <div class="card mb-3">
@@ -128,30 +330,13 @@
     {% if stats_atencao %}
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0" style="font-size:.875rem;">
-        <thead>
-          <tr>
-            <th>Câmera</th><th>IP</th><th>Latência</th><th>Jitter</th><th>Perda</th><th>Instabilidades</th><th></th>
-          </tr>
-        </thead>
+        <thead><tr><th>Câmera</th><th>IP</th><th>Qualidade</th><th></th></tr></thead>
         <tbody>
           {% for s in stats_atencao %}{% set cam = s.cam %}
           <tr class="diag-row" data-name="{{ (cam.name or '') | lower }}" data-ip="{{ cam.ip_address }}">
             <td>{{ cam.name or '—' }}</td>
             <td><code>{{ cam.ip_address }}</code></td>
-            <td>{% if s.avg_ms is not none %}{% if s.avg_ms > 80 %}<span class="text-warning">{{ "%.0f"|format(s.avg_ms) }}ms</span>{% else %}<span class="text-success">{{ "%.0f"|format(s.avg_ms) }}ms</span>{% endif %}{% else %}<span class="text-secondary">—</span>{% endif %}</td>
-            <td>{% if s.jitter_ms and s.jitter_ms > 0 %}{% if s.jitter_ms > 40 %}<span class="text-warning">{{ "%.0f"|format(s.jitter_ms) }}ms</span>{% else %}<span class="text-secondary">{{ "%.0f"|format(s.jitter_ms) }}ms</span>{% endif %}{% else %}<span class="text-secondary">0ms</span>{% endif %}</td>
-            <td>{% if s.loss_pct > 0 %}<span class="text-warning">{{ "%.0f"|format(s.loss_pct) }}%</span>{% else %}<span class="text-success">0%</span>{% endif %}</td>
-            <td>
-              {% for w in s.cam_warnings %}
-              <span class="badge bg-warning text-dark me-1 diag-suggest"
-                    style="font-size:.7rem; cursor:help;"
-                    data-title="{{ w.title }}"
-                    data-suggestion="{{ w.suggestion }}"
-                    data-color="#fbbf24">{{ w.title }}</span>
-              {% else %}
-              <span class="text-secondary small">—</span>
-              {% endfor %}
-            </td>
+            <td>{{ quality_cell(s) }}</td>
             <td><a href="http://{{ cam.ip_address }}" target="_blank" class="btn btn-sm btn-outline-info py-0" title="Abrir interface web"><i class="bi bi-eye"></i></a></td>
           </tr>
           {% endfor %}
@@ -198,16 +383,13 @@
   <div id="diag-normal" class="d-none">
     <div class="table-responsive">
       <table class="table table-sm align-middle mb-0" style="font-size:.875rem;">
-        <thead><tr><th>Câmera</th><th>IP</th><th>Latência</th><th>Jitter</th><th>Perda</th><th>Estado</th><th></th></tr></thead>
+        <thead><tr><th>Câmera</th><th>IP</th><th>Qualidade</th><th></th></tr></thead>
         <tbody>
           {% for s in stats_normal %}{% set cam = s.cam %}
           <tr class="diag-row" data-name="{{ (cam.name or '') | lower }}" data-ip="{{ cam.ip_address }}">
             <td>{{ cam.name or '—' }}</td>
             <td><code>{{ cam.ip_address }}</code></td>
-            <td><span class="text-success">{{ "%.0f"|format(s.avg_ms) }}ms</span></td>
-            <td><span class="text-secondary">{{ "%.0f"|format(s.jitter_ms or 0) }}ms</span></td>
-            <td><span class="text-success">0%</span></td>
-            <td><span class="badge bg-success">Normal</span></td>
+            <td>{{ quality_cell(s) }}</td>
             <td><a href="http://{{ cam.ip_address }}" target="_blank" class="btn btn-sm btn-outline-info py-0" title="Abrir interface web"><i class="bi bi-eye"></i></a></td>
           </tr>
           {% endfor %}
@@ -261,7 +443,7 @@
 </div>
 {% endif %}
 
-<!-- Credenciais não cadastradas no cofre -->
+<!-- Credenciais não cadastradas -->
 {% if info_issues %}
 <div class="card mb-3">
   <div class="card-header d-flex justify-content-between align-items-center"
@@ -323,5 +505,7 @@
 {% endif %}
 
 <div class="text-secondary small mt-2">
-  <i class="bi bi-clock"></i> Verificado agora · TCP ping ×4 por câmera
+  <i class="bi bi-clock"></i> Verificado agora · ICMP ping (fallback TCP) por câmera
 </div>
+
+<!-- Tooltip posicionado pelo JS em diagnostics.html (scripts em innerHTML não executam) -->
