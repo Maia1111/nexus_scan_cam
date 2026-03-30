@@ -12,6 +12,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Callable, Iterable
+from http.client import HTTPConnection, HTTPSConnection
 
 try:
     import psutil as _psutil
@@ -26,7 +27,21 @@ except ImportError:
     _HAS_ICMPLIB = False
 
 
-SCAN_PORTS = (80, 443, 554, 8080, 8000, 34567, 37777, 8554, 37778, 1935, 2020, 9000, 8888)
+SCAN_PORTS = (
+    80,
+    443,
+    554,
+    8080,
+    8000,
+    34567,
+    37777,
+    8554,
+    37778,
+    1935,
+    2020,
+    9000,
+    8888,
+)
 MAX_WORKERS = 50
 
 
@@ -51,6 +66,13 @@ CAMERA_OUI_TABLE = {
     "10:6F:3F": "Hikvision",
     "30:E2:83": "Hikvision",
     "E0:BC:FE": "Hikvision",
+    "7C:2F:80": "Hikvision",
+    "D8:49:2F": "Hikvision",
+    "F0:5A:09": "Hikvision",
+    "00:12:6B": "Hikvision",
+    "F4:29:81": "Hikvision",
+    "44:6D:57": "Hikvision",
+    "6C:9E:9D": "Hikvision",
     # Dahua
     "FC:D7:33": "Dahua",
     "A0:BD:1D": "Dahua",
@@ -63,6 +85,15 @@ CAMERA_OUI_TABLE = {
     "DC:F8:B9": "Dahua",
     "14:19:2B": "Dahua",
     "E0:50:8B": "Dahua",
+    "3C:15:C2": "Dahua",
+    "6C:5A:B6": "Dahua",
+    "A0:2E:6F": "Dahua",
+    "F0:7B:CB": "Dahua",
+    "5C:63:BF": "Dahua",
+    "1C:AE:77": "Dahua",
+    "00:25:9E": "Dahua",
+    "50:3A:7E": "Dahua",
+    "8C:01:AA": "Dahua",
     # Intelbras
     "E4:24:6C": "Intelbras",
     "90:02:A9": "Intelbras",
@@ -74,29 +105,54 @@ CAMERA_OUI_TABLE = {
     "82:96:E8": "Intelbras",
     "D8:BE:65": "Intelbras",
     "9C:84:B6": "Intelbras",
+    "40:25:C2": "Intelbras",
+    "5C:E9:31": "Intelbras",
+    "70:69:79": "Intelbras",
+    "8C:EA:7B": "Intelbras",
+    "A0:59:3A": "Intelbras",
+    "C8:64:C7": "Intelbras",
     # Axis
     "EC:71:DB": "Axis",
     "00:40:8C": "Axis",
     "00:1A:79": "Axis",
     "3C:A0:67": "Axis",
     "B8:A4:4F": "Axis",
+    "AC:CC:8E": "Axis",
+    "00:02:33": "Axis",
+    # Uniview
+    "00:18:85": "Uniview",
+    "20:6B:E7": "Uniview",
+    "4C:1F:CC": "Uniview",
+    "74:57:98": "Uniview",
+    "B4:28:F1": "Uniview",
+    "48:0B:B2": "Uniview",
+    "C4:AC:59": "Uniview",
+    "18:86:AC": "Uniview",
     # Hanwha / Samsung Techwin
     "10:7B:44": "Hanwha",
     "40:73:4E": "Hanwha",
     "00:09:18": "Hanwha",
     "00:12:31": "Samsung Techwin",
-    # Uniview (UNV)
-    "48:0B:B2": "Uniview",
-    "C4:AC:59": "Uniview",
-    "18:86:AC": "Uniview",
+    "00:16:6C": "Hanwha Techwin",
+    "2C:48:34": "Hanwha Techwin",
+    "48:EE:0C": "Hanwha Techwin",
     # Vivotek
     "00:23:63": "Vivotek",
+    "00:20:F7": "Vivotek",
+    "00:02:2D": "Vivotek",
+    "00:1B:65": "Vivotek",
     # XM / XiongMai (câmera genérica chinesa)
     "AC:CC:8E": "XM",
     "40:36:66": "XM",
     "84:D3:2D": "XM",
+    "00:12:6B": "XM",
+    "00:25:9E": "XM",
     # Reolink
     "C4:D9:87": "Reolink",
+    "E8:DB:84": "Reolink",
+    "44:4F:5E": "Reolink",
+    "2C:54:CF": "Reolink",
+    "9C:6A:AE": "Reolink",
     # TP-Link / Tapo
     "98:D8:63": "TP-Link",
     "50:C7:BF": "TP-Link",
@@ -104,6 +160,44 @@ CAMERA_OUI_TABLE = {
     "C0:06:C3": "TP-Link",
     "B0:A7:B9": "TP-Link",
     "50:8B:B9": "TP-Link",
+    "60:32:B1": "TP-Link",
+    "78:44:76": "TP-Link",
+    # EZVIZ
+    "44:C3:06": "EZVIZ",
+    "00:12:6B": "EZVIZ",
+    "D4:6E:0E": "EZVIZ",
+    # Foscam
+    "00:0F:13": "Foscam",
+    "00:12:12": "Foscam",
+    "00:13:62": "Foscam",
+    "68:78:48": "Foscam",
+    "70:57:BF": "Foscam",
+    # Lorex
+    "00:12:31": "Lorex",
+    "6C:5A:B6": "Lorex",
+    # Amcrest
+    "00:25:9E": "Amcrest",
+    "50:3A:7E": "Amcrest",
+    # Ubiquiti / UniFi
+    "00:15:6D": "Ubiquiti",
+    "00:27:22": "Ubiquiti",
+    "24:5A:4C": "Ubiquiti",
+    "44:D9:E7": "Ubiquiti",
+    "78:8A:20": "Ubiquiti",
+    # Giga
+    "00:1A:79": "Giga",
+    "00:1B:2F": "Giga",
+    # DCS
+    "00:15:E8": "DCS",
+    # Jovision
+    "00:1B:71": "Jovision",
+    "00:1C:6B": "Jovision",
+    # Tiandy
+    "00:1B:71": "Tiandy",
+    "00:1C:6B": "Tiandy",
+    # Imou
+    "00:12:6B": "Imou",
+    "00:1B:2F": "Imou",
 }
 
 INTELBRAS_HINT_PORTS = {37777}
@@ -112,11 +206,54 @@ INTELBRAS_HINT_PORTS = {37777}
 # Porta 34567 é protocolo XiongMai/XM (usado em câmeras genéricas chinesas e alguns OEM).
 # Porta 37777 é SDK Dahua (usado por Dahua e marcas que fazem OEM Dahua, como Intelbras).
 PORT_BRAND_HINTS = {
-    8000:  "Hikvision",
+    8000: "Hikvision",
     37777: "Dahua / Intelbras",
     37778: "Dahua",
-    34567: "XM / Genérica",
+    34567: "XM / Intelbras / Genérica",
 }
+
+HTTP_BRAND_SIGNATURES = {
+    "hikvision": "Hikvision",
+    "hms": "Hikvision",
+    "hik-web": "Hikvision",
+    "hik-osd": "Hikvision",
+    "dahua": "Dahua",
+    "dms": "Dahua",
+    "dvr": "Dahua",
+    "intelbras": "Intelbras",
+    "ip camera": "Intelbras",
+    "axis": "Axis",
+    "axis-cgi": "Axis",
+    "vivotek": "Vivotek",
+    "reolink": "Reolink",
+    "ezviz": "EZVIZ",
+    "foscam": "Foscam",
+    "uniview": "Uniview",
+    "lorex": "Lorex",
+    "amcrest": "Amcrest",
+    "ubiquiti": "Ubiquiti",
+    "unifi": "Ubiquiti",
+    "jovision": "Jovision",
+    "tiandy": "Tiandy",
+    "imou": "Imou",
+    "tp-link": "TP-Link",
+    "tapo": "TP-Link",
+}
+
+ONVIF_GET_DEVICE_INFO = """<?xml version="1.0" encoding="UTF-8"?>
+<e:Envelope xmlns:e="http://www.w3.org/2003/05/soap-envelope"
+            xmlns:w="http://schemas.xmlsoap.org/ws/2004/08/addressing"
+            xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery"
+            xmlns:tds="http://www.onvif.org/ver10/device/wsdl">
+  <e:Header>
+    <w:MessageID>uuid:{}</w:MessageID>
+    <w:To>http://{}/onvif/device_service</w:To>
+    <w:Action>http://www.onvif.org/ver10/device/wsdl/GetDeviceInformation</w:Action>
+  </e:Header>
+  <e:Body>
+    <tds:GetDeviceInformation/>
+  </e:Body>
+</e:Envelope>"""
 
 
 @dataclass(slots=True)
@@ -147,9 +284,10 @@ class NetworkScanner:
 
     @staticmethod
     def get_all_networks() -> list[str]:
-        """Detecta todas as redes IPv4 ativas usando psutil (máscara real por interface)."""
+        """Detecta todas as redes IPv4 ativas usando psutil e comandos nativos (máscara real por interface)."""
         networks = set()
 
+        # Tenta usar psutil (máscara real)
         if _HAS_PSUTIL:
             try:
                 for _iface, addrs in _psutil.net_if_addrs().items():
@@ -164,7 +302,24 @@ class NetworkScanner:
             except Exception:
                 pass
 
-        # Fallback: socket + assume /24
+        # Tenta usar o comando 'ip' no Linux (mais preciso para CIDR) como fallback/complemento
+        if os.name != "nt":
+            try:
+                import subprocess
+                output = subprocess.check_output(["ip", "-4", "addr", "show"], text=True)
+                # Procura por padrões como 'inet 192.168.1.5/24'
+                matches = re.findall(r"inet\s+(\d+\.\d+\.\d+\.\d+/\d+)", output)
+                for match in matches:
+                    if not match.startswith("127."):
+                        try:
+                            net = ipaddress.ip_network(match, strict=False)
+                            networks.add(str(net))
+                        except ValueError:
+                            continue
+            except Exception:
+                pass
+
+        # Fallback 2: socket + assume /24
         if not networks:
             try:
                 hostname = socket.gethostname()
@@ -282,91 +437,76 @@ class NetworkScanner:
         return CAMERA_OUI_TABLE.get(oui, "Desconhecida")
 
     @staticmethod
-    def _detect_brand_from_http(ip: str, port: int, timeout: float = 1.5) -> str | None:
-        """Identifica a marca via banner HTTP (header Server + corpo inicial).
-
-        Usado como fallback quando OUI e port hints não identificam a marca.
-        Usa apenas a biblioteca socket (sem dependências extras).
-        """
-        try:
-            conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            conn.settimeout(timeout)
-            conn.connect((ip, port))
-            conn.sendall(
-                b"GET / HTTP/1.0\r\nHost: " + ip.encode() + b"\r\nConnection: close\r\n\r\n"
-            )
-            raw = b""
-            while len(raw) < 4096:
-                chunk = conn.recv(1024)
-                if not chunk:
-                    break
-                raw += chunk
-            conn.close()
-            text = raw.decode("utf-8", errors="ignore").lower()
-        except Exception:
+    def _detect_brand_via_http(ip: str, ports: list[int], timeout: float = 1.0) -> str | None:
+        """Identifica a marca via banner HTTP (Server header, WWW-Authenticate ou corpo HTML)."""
+        http_ports = sorted([p for p in ports if p in (80, 443, 8080, 8000, 34567, 8888, 9000)])
+        if not http_ports:
             return None
 
-        # Header Server: tem prioridade (mais confiável que corpo HTML)
-        for line in text.split("\n"):
-            stripped = line.strip()
-            if stripped.startswith("server:"):
-                srv = stripped[7:].strip()
-                brand_checks = [
-                    ("hikvision", "Hikvision"),
-                    ("dahua",     "Dahua"),
-                    ("intelbras", "Intelbras"),
-                    ("axis",      "Axis"),
-                    ("hanwha",    "Hanwha"),
-                    ("wisenet",   "Hanwha"),
-                    ("uniview",   "Uniview"),
-                    ("unv",       "Uniview"),
-                    ("reolink",   "Reolink"),
-                    ("tp-link",   "TP-Link"),
-                    ("tapo",      "TP-Link"),
-                    ("vivotek",   "Vivotek"),
-                    ("tiandy",    "Tiandy"),
-                    ("milesight", "Milesight"),
-                    ("bosch",     "Bosch"),
-                    ("pelco",     "Pelco"),
-                    ("flir",      "FLIR"),
-                    ("mobotix",   "Mobotix"),
-                ]
-                for keyword, brand in brand_checks:
-                    if keyword in srv:
+        for port in http_ports:
+            try:
+                conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                conn.settimeout(timeout)
+                conn.connect((ip, port))
+
+                request = (
+                    f"GET / HTTP/1.1\r\nHost: {ip}:{port}\r\n"
+                    f"User-Agent: Mozilla/5.0\r\nAccept: */*\r\nConnection: close\r\n\r\n"
+                )
+                conn.sendall(request.encode())
+
+                response = b""
+                while len(response) < 8192:
+                    chunk = conn.recv(2048)
+                    if not chunk:
+                        break
+                    response += chunk
+                    if b"\r\n\r\n" in response and len(response) > 512: # Já temos headers e algum corpo
+                        break
+                conn.close()
+
+                text = response.decode("utf-8", errors="ignore")
+                text_lower = text.lower()
+
+                # 1. Busca por assinaturas conhecidas no texto completo (Headers + Corpo)
+                for signature, brand in HTTP_BRAND_SIGNATURES.items():
+                    if signature in text_lower:
                         return brand
 
-        # Busca no corpo HTML (fallback ao Server header)
-        body_checks = [
-            ("hikvision",       "Hikvision"),
-            ("dahua",           "Dahua"),
-            ("intelbras",       "Intelbras"),
-            ("axis camera",     "Axis"),
-            ("hanwha",          "Hanwha"),
-            ("wisenet",         "Hanwha"),
-            ("uniview",         "Uniview"),
-            ("reolink",         "Reolink"),
-            ("tp-link",         "TP-Link"),
-            ("tapo",            "TP-Link"),
-            ("vivotek",         "Vivotek"),
-            ("tiandy",          "Tiandy"),
-            ("milesight",       "Milesight"),
-            ("grandstream",     "Grandstream"),
-            ("bosch security",  "Bosch"),
-            ("pelco",           "Pelco"),
-            ("flir",            "FLIR"),
-            ("mobotix",         "Mobotix"),
-        ]
-        for keyword, brand in body_checks:
-            if keyword in text:
-                return brand
+                # 2. Header Server: tem prioridade (mais confiável)
+                server_match = re.search(r"server:\s*([^\r\n]+)", text, re.IGNORECASE)
+                if server_match:
+                    srv = server_match.group(1).lower()
+                    brand_map = {
+                        "hikvision": "Hikvision", "dahua": "Dahua", "intelbras": "Intelbras",
+                        "axis": "Axis", "hanwha": "Hanwha", "wisenet": "Hanwha",
+                        "uniview": "Uniview", "unv": "Uniview", "reolink": "Reolink",
+                        "tp-link": "TP-Link", "tapo": "TP-Link", "vivotek": "Vivotek",
+                        "tiandy": "Tiandy", "milesight": "Milesight", "bosch": "Bosch",
+                    }
+                    for keyword, brand in brand_map.items():
+                        if keyword in srv:
+                            return brand
 
+                # 3. WWW-Authenticate: Realm costuma ter o nome da marca
+                www_match = re.search(r'www-authenticate:\s*basic\s+realm="([^"]+)"', text, re.IGNORECASE)
+                if www_match:
+                    realm = www_match.group(1).lower()
+                    for signature, brand in HTTP_BRAND_SIGNATURES.items():
+                        if signature in realm:
+                            return brand
+
+            except Exception:
+                continue
         return None
 
     @staticmethod
     def _parse_arp_linux() -> dict[str, str]:
         arp_map: dict[str, str] = {}
         try:
-            with open("/proc/net/arp", "r", encoding="utf-8", errors="ignore") as arp_file:
+            with open(
+                "/proc/net/arp", "r", encoding="utf-8", errors="ignore"
+            ) as arp_file:
                 lines = arp_file.readlines()[1:]
             for line in lines:
                 parts = line.split()
@@ -436,49 +576,42 @@ class NetworkScanner:
         return NetworkScanner._parse_arp_linux()
 
     @staticmethod
-    def _onvif_get_device_info(ip: str, port: int = 80, timeout: float = 1.5) -> tuple[str, str] | None:
-        """Obtém fabricante e modelo via ONVIF GetDeviceInformation (sem autenticação).
-
-        Retorna (manufacturer, model) ou None se o dispositivo não suportar ONVIF
-        ou requerer autenticação. Usa raw socket — sem dependências extras.
-        """
-        soap = (
-            b'<?xml version="1.0" encoding="UTF-8"?>'
-            b'<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">'
-            b"<s:Body>"
-            b'<tds:GetDeviceInformation xmlns:tds="http://www.onvif.org/ver10/device/wsdl"/>'
-            b"</s:Body>"
-            b"</s:Envelope>"
-        )
-        request = (
-            b"POST /onvif/device_service HTTP/1.0\r\n"
-            b"Host: " + ip.encode() + b"\r\n"
-            b"Content-Type: application/soap+xml; charset=utf-8\r\n"
-            b'SOAPAction: "http://www.onvif.org/ver10/device/wsdl/GetDeviceInformation"\r\n'
-            b"Content-Length: " + str(len(soap)).encode() + b"\r\n"
-            b"Connection: close\r\n\r\n"
-            + soap
-        )
-        try:
-            conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            conn.settimeout(timeout)
-            conn.connect((ip, port))
-            conn.sendall(request)
-            raw = b""
-            while len(raw) < 8192:
-                chunk = conn.recv(2048)
-                if not chunk:
-                    break
-                raw += chunk
-            conn.close()
-            text = raw.decode("utf-8", errors="ignore")
-        except Exception:
+    def _onvif_get_device_info(ip: str, ports: list[int], timeout: float = 1.2) -> tuple[str, str] | None:
+        """Obtém fabricante e modelo via ONVIF GetDeviceInformation (sem autenticação)."""
+        onvif_ports = [p for p in ports if p in (80, 8080, 443, 8000, 8888, 9000)]
+        if not onvif_ports:
             return None
 
-        mfr = re.search(r"<[^:>]*:?Manufacturer[^>]*>\s*([^<]+?)\s*<", text)
-        mdl = re.search(r"<[^:>]*:?Model[^>]*>\s*([^<]+?)\s*<", text)
-        if mfr:
-            return mfr.group(1).strip(), (mdl.group(1).strip() if mdl else "")
+        for port in onvif_ports:
+            try:
+                probe = ONVIF_GET_DEVICE_INFO.format(uuid.uuid4(), f"{ip}:{port}")
+                request = (
+                    f"POST /onvif/device_service HTTP/1.1\r\n"
+                    f"Host: {ip}:{port}\r\n"
+                    f"Content-Type: application/soap+xml; charset=utf-8\r\n"
+                    f"Content-Length: {len(probe)}\r\n"
+                    f"Connection: close\r\n\r\n{probe}"
+                )
+                conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                conn.settimeout(timeout)
+                conn.connect((ip, port))
+                conn.sendall(request.encode())
+                
+                raw = b""
+                while len(raw) < 8192:
+                    chunk = conn.recv(2048)
+                    if not chunk:
+                        break
+                    raw += chunk
+                conn.close()
+                text = raw.decode("utf-8", errors="ignore")
+                
+                mfr = re.search(r"<[^:>]*:?Manufacturer[^>]*>\s*([^<]+?)\s*<", text)
+                mdl = re.search(r"<[^:>]*:?Model[^>]*>\s*([^<]+?)\s*<", text)
+                if mfr:
+                    return mfr.group(1).strip(), (mdl.group(1).strip() if mdl else "")
+            except Exception:
+                continue
         return None
 
     def _probe_port(self, ip_addr: str, port: int) -> bool:
@@ -530,7 +663,9 @@ class NetworkScanner:
         onvif_hint: bool = False,
     ) -> DeviceProbeResult | None:
         try:
-            open_ports = [port for port in self.ports if self._probe_port(ip_addr, port)]
+            open_ports = [
+                port for port in self.ports if self._probe_port(ip_addr, port)
+            ]
 
             if not open_ports and not onvif_hint:
                 return None
@@ -539,24 +674,21 @@ class NetworkScanner:
             brand = self.detect_brand(mac)
             model = ""
 
+            # Fallback 1: porta conhecida (instant)
             if brand == "Desconhecida":
-                # Fallback 1: porta conhecida (instant)
                 for port, hint_brand in PORT_BRAND_HINTS.items():
                     if port in open_ports:
                         brand = hint_brand
                         break
 
-            http_port = next((p for p in (80, 8080) if p in open_ports), None)
+            # Fallback 2: ONVIF GetDeviceInformation — retorna fabricante e modelo exatos
+            onvif_result = self._onvif_get_device_info(ip_addr, open_ports)
+            if onvif_result:
+                brand, model = onvif_result
 
-            if brand == "Desconhecida" and http_port:
-                # Fallback 2: ONVIF GetDeviceInformation — retorna fabricante e modelo exatos
-                onvif_result = self._onvif_get_device_info(ip_addr, http_port)
-                if onvif_result:
-                    brand, model = onvif_result
-
-            if brand == "Desconhecida" and http_port:
-                # Fallback 3: banner HTTP (Server header + corpo HTML)
-                detected = self._detect_brand_from_http(ip_addr, http_port)
+            # Fallback 3: Assinaturas HTTP
+            if brand == "Desconhecida" or brand == "XM / Intelbras / Genérica":
+                detected = self._detect_brand_via_http(ip_addr, open_ports)
                 if detected:
                     brand = detected
 
@@ -613,7 +745,9 @@ class NetworkScanner:
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = {
-                executor.submit(self._probe_host, host, arp_map, host in network_onvif_ips): host
+                executor.submit(
+                    self._probe_host, host, arp_map, host in network_onvif_ips
+                ): host
                 for host in hosts
             }
 
